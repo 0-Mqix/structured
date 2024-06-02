@@ -1,14 +1,34 @@
-import { expect, test } from "bun:test";
-import { Endian, Structured } from ".";
-import { bool, uint8 } from "./types/int";
+import { expect, test } from "bun:test"
+import { Endian, Structured } from "./src"
+import { bool, float32, long, uint32, uint8 } from "./src/types"
 
 test("simple", () => {
-    var x = new Structured(Endian.Little, [
-        ["bruh", bool],
-        ["count", uint8]
-    ])
+	var x = new Structured(Endian.Little, [
+		["bruh", uint32],
+		["float", float32],
+		[
+			"nested",
+			[
+				["1", uint8],
+				["2", uint8],
+				["3", bool],
+				["4", [["gin", long]]]
+			]
+		]
+	])
 
-    console.log(x.fromBytes(new Uint8Array([1, 16])))
-    
-    console.log(x.toBytes({bruh: false, count: 200}))
-});
+	const input = {
+		bruh: 1000,
+		float: 15.5,
+		nested: {
+			1: 0,
+			2: 4,
+			3: true,
+			4: { gin: BigInt(2234234) }
+		}
+	}
+
+	const bytes = x.writeBytes(input)
+	const output = x.readBytes(bytes)
+	expect(output).toStrictEqual(input)
+})
