@@ -1,7 +1,7 @@
-# structured
-This is a libary for serializing javascript objects from and to packed c like structs as an Uint8Array.
+# Structured
+This is a libary for serializing javascript objects from and to c like packed structs as an Uint8Array.
 
-## example
+## Example
 ```js
 import Structured, { uint32, float32, uint8, bool } from "."
 
@@ -34,7 +34,7 @@ const data: {
     };
 }
 ```
-And to write an object to an buffer looks like this below.
+And to create an buffer from an object looks like this below.
 ```ts
 const responseDataStruct = new Structured(false, [
 	["deviceId", uint32],
@@ -43,6 +43,7 @@ const responseDataStruct = new Structured(false, [
 
 const responseBytes = responseDataStruct.toBytes({deviceId: 5, valid: true}) 
 ```
+
 ## Structured
 ```ts
 export default class Structured<const T extends readonly Property[]> {
@@ -57,8 +58,7 @@ export default class Structured<const T extends readonly Property[]> {
 }
 ```
 
-
-## types
+## Types
 This libary also has predefined types for the structs.
 
 | Symbol | JavaScript Type |
@@ -77,7 +77,7 @@ This libary also has predefined types for the structs.
 | long | bigint |
 | bool | boolean |
 
-### custom types
+### Custom Types
 If you need a custom type you can create your own. you just need to follow the interface below that all types are based on.
 ```ts
 export interface StructuredType<T> {
