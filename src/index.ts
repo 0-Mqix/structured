@@ -24,7 +24,7 @@ type StructToObject<T extends readonly Property[]> = {
 
 type PropertyMap = Map<string, StructuredType<any> | Map<string, StructuredType<any>>>
 
-export class Structured<const T extends readonly Property[]> {
+export default class Structured<const T extends readonly Property[]> {
 	map: PropertyMap = new Map()
 	size: number = 0
 	littleEndian: boolean
@@ -79,9 +79,6 @@ export class Structured<const T extends readonly Property[]> {
 		}
 
 		process(result, this.map)
-
-		// @ts-ignore
-		return result
 	}
 
 	writeBytes(object: StructToObject<T>, bytes: Uint8Array) {
@@ -102,8 +99,6 @@ export class Structured<const T extends readonly Property[]> {
 		}
 
 		process(object, this.map)
-
-		return bytes
 	}
 
 	toBytes(object: StructToObject<T>): Uint8Array {
@@ -119,3 +114,5 @@ export class Structured<const T extends readonly Property[]> {
 		return object
 	}
 }
+
+export * from "./types"

@@ -2,6 +2,15 @@
   "name": "structured",
   "module": "index.ts",
   "type": "module",
+  "main": "dist/index",
+  "types": "dist/index.d.ts",
+  "version": "0.0.0",
+
+  "scripts": {
+    "build": "bun build --target=browser src/index.ts --outfile=dist/index.js && bun run build:declaration",
+    "build:declaration": "tsc --emitDeclarationOnly --project tsconfig.types.json"
+  },
+
   "devDependencies": {
     "@types/bun": "latest"
   },
@@ -9,3 +18,4 @@
     "typescript": "^5.0.0"
   }
 }
+
