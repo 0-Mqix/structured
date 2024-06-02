@@ -6,7 +6,7 @@ var assert = function(value, message) {
 };
 
 // src/types.ts
-var generateDataViewTypes = function(type, size) {
+var createDataViewType = function(type, size) {
   return {
     size,
     readBytes: (_, view, index, littleEndian) => {
@@ -17,16 +17,16 @@ var generateDataViewTypes = function(type, size) {
     }
   };
 };
-var uint8 = generateDataViewTypes("Uint8", 1);
-var int8 = generateDataViewTypes("Int8", 1);
-var uint16 = generateDataViewTypes("Uint16", 2);
-var int16 = generateDataViewTypes("Int16", 2);
-var uint32 = generateDataViewTypes("Uint32", 4);
-var int32 = generateDataViewTypes("Int32", 4);
-var float32 = generateDataViewTypes("Float32", 4);
-var float64 = generateDataViewTypes("Float64", 8);
-var int64 = generateDataViewTypes("BigInt64", 8);
-var uint64 = generateDataViewTypes("BigUint64", 8);
+var uint8 = createDataViewType("Uint8", 1);
+var int8 = createDataViewType("Int8", 1);
+var uint16 = createDataViewType("Uint16", 2);
+var int16 = createDataViewType("Int16", 2);
+var uint32 = createDataViewType("Uint32", 4);
+var int32 = createDataViewType("Int32", 4);
+var float32 = createDataViewType("Float32", 4);
+var float64 = createDataViewType("Float64", 8);
+var int64 = createDataViewType("BigInt64", 8);
+var uint64 = createDataViewType("BigUint64", 8);
 var double = float64;
 var long = int64;
 var bool = {
