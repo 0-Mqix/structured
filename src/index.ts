@@ -1,4 +1,4 @@
-export function assert(value: boolean, message?: string) {
+function assert(value: boolean, message?: string) {
 	if (!value) {
 		throw new Error(message)
 	}
@@ -6,8 +6,8 @@ export function assert(value: boolean, message?: string) {
 
 export interface StructuredType<T> {
 	size: number
-	readBytes(bytes: Uint8Array, view: DataView, index: number, endian: Endian): T
-	writeBytes(value: T, bytes: Uint8Array, view: DataView, index: number, endian: Endian): void
+	readBytes(bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): T
+	writeBytes(value: T, bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): void
 }
 
 type Property = readonly [string, StructuredType<any> | readonly Property[]]
@@ -22,29 +22,24 @@ type StructToObject<T extends readonly Property[]> = {
 	[K in T[number] as K[0]]: InferStructuredType<K[1]>
 } & {}
 
-export enum Endian {
-	Little,
-	Big
-}
-
 type PropertyMap = Map<string, StructuredType<any> | Map<string, StructuredType<any>>>
 
 export class Structured<const T extends readonly Property[]> {
 	map: PropertyMap = new Map()
 	size: number = 0
-	endian: Endian
+	littleEndian: boolean
 
-	constructor(endian: Endian, struct: T) {
-		this.endian = endian
+	constructor(littleEndian: boolean, struct: T) {
+		this.littleEndian = littleEndian
 
 		let i = 0
 
 		const process = (map: PropertyMap, struct: T | readonly Property[]) => {
-            for (const [name, type] of struct) {
+			for (const [name, type] of struct) {
 				if (Array.isArray(type)) {
-                    const _map = new Map()
+					const _map = new Map()
 					process(_map, type)
-                    map.set(name, _map)
+					map.set(name, _map)
 				} else {
 					const _type = type as StructuredType<any>
 
@@ -65,53 +60,62 @@ export class Structured<const T extends readonly Property[]> {
 		process(this.map, struct)
 	}
 
-	readBytes(bytes: Uint8Array): StructToObject<T> {
+	readBytes(bytes: Uint8Array, result: StructToObject<T>)  {
 		assert(bytes.length == this.size, "the length of the bytes do not match")
 
 		const view = new DataView(bytes.buffer)
-		const result: { [key: string]: any } = {}
 		let index = 0
 
 		const process = (result: { [key: string]: any }, map: PropertyMap) => {
 			for (const [name, type] of map) {
 				if (type instanceof Map) {
-                    result[name] = {}
+					result[name] = {}
 					process(result[name], type)
 				} else {
-					result[name] = type.readBytes(bytes, view, index, this.endian)
+					result[name] = type.readBytes(bytes, view, index, this.littleEndian)
 					index += type.size
 				}
 			}
 		}
 
-        process(result, this.map);
+		process(result, this.map)
 
 		// @ts-ignore
 		return result
 	}
 
-	writeBytes(object: StructToObject<T>): Uint8Array {
-		const bytes = new Uint8Array(this.size)
+	writeBytes(object: StructToObject<T>, bytes: Uint8Array) {
+		assert(bytes.length == this.size, "the length of the bytes do not match");
 		const view = new DataView(bytes.buffer)
 		let index = 0
 
-        const process = (_object: { [key: string]: any }, map: PropertyMap) => {
-			
-            for (const [name, type] of map) {
+		const process = (_object: { [key: string]: any }, map: PropertyMap) => {
+			for (const [name, type] of map) {
 				if (type instanceof Map) {
-                    process(_object[name], type)
+					process(_object[name], type)
 				} else {
-			        assert(Object.hasOwn(_object, name), "object has not the property")
-			        type.writeBytes(_object[name], bytes, view, index, this.endian)
+					assert(Object.hasOwn(_object, name), "object has not the property")
+					type.writeBytes(_object[name], bytes, view, index, this.littleEndian)
 					index += type.size
 				}
 			}
 		}
 
-        process(object, this.map)
+		process(object, this.map)
 
 		return bytes
 	}
-}
 
-require("./types")
+	toBytes(object: StructToObject<T>): Uint8Array {
+		const bytes = new Uint8Array(this.size)
+		this.writeBytes(object, bytes)
+		return bytes
+	}
+
+
+	fromBytes(bytes: Uint8Array): StructToObject<T> {
+		const object = {} as StructToObject<T>
+		this.readBytes(bytes, object)
+		return object
+	}
+}

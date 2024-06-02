@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test"
-import { Endian, Structured } from "./src"
+import { Structured } from "./src"
 import { bool, float32, long, uint32, uint8 } from "./src/types"
 
 test("simple", () => {
-	var x = new Structured(Endian.Little, [
+	var x = new Structured(false, [
 		["bruh", uint32],
 		["float", float32],
 		[
@@ -28,7 +28,7 @@ test("simple", () => {
 		}
 	}
 
-	const bytes = x.writeBytes(input)
-	const output = x.readBytes(bytes)
+	const bytes = x.toBytes(input)
+	const output = x.fromBytes(bytes)
 	expect(output).toStrictEqual(input)
 })

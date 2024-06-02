@@ -1,16 +1,16 @@
-import { Endian, type StructuredType } from "."
+import type { StructuredType } from ".";
 
 function generateDataViewTypes<T>(type: string, size: number): StructuredType<T> {
 	return {
 		size,
-		readBytes: (_: Uint8Array, view: DataView, index: number, endian: Endian): T => {
+		readBytes: (_: Uint8Array, view: DataView, index: number, littleEndian: boolean): T => {
            //@ts-ignore
-			return view[`get${type}`](index, endian == Endian.Little)
+			return view[`get${type}`](index, littleEndian)
 
         },
-		writeBytes: (value: T, _: Uint8Array, view: DataView, index: number, endian: Endian): void => {
-            //@ts-ignore
-			view[`set${type}`](index, value, endian == Endian.Little)
+		writeBytes: (value: T, _: Uint8Array, view: DataView, index: number, littleEndian: boolean): void => {
+			//@ts-ignore
+			view[`set${type}`](index, value, littleEndian)
 		}
 	}
 }
@@ -36,7 +36,7 @@ export const long = int64;
 export const bool: StructuredType<boolean> = {
 	size: 1,
 	readBytes: function (bytes: Uint8Array, _: DataView, index: number): boolean {
-		return bytes[0] ? true : false
+		return bytes[index] ? true : false
 	},
 	writeBytes: function (value: boolean, bytes: Uint8Array, _: DataView, index: number) {
 		bytes[index] = value ? 1 : 0
