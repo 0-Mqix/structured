@@ -1,5 +1,5 @@
 # Structured
-This is a libary for serializing javascript objects from and to c like packed structs as an Uint8Array.
+This is a Library for serialization of javascript objects from and to c like packed structs as an Uint8Array.
 
 ## Example
 ```js
