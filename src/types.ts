@@ -1,4 +1,4 @@
-import Structured, { type StructuredType, type Property, type InferOutputType } from "./structured"
+import Structured, { type StructuredType, type Property, type InferOutputType, type PropertyMap } from "./structured"
 import { assert } from "./utils"
 
 function createDataViewType<T>(type: string, size: number): StructuredType<T> {
@@ -74,7 +74,7 @@ export function string(size: number): StructuredType<string> {
 
 function emptyArrayElement(bytes: Uint8Array, offset: number, elementSize: number) {
 	let empty = true
-			
+
 	for (let j = 0; j < elementSize; j++) {
 		if (bytes[offset + j] != 0) {
 			empty = false
@@ -113,7 +113,7 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 
 					const element = {} as InferOutputType<T>
 					struct.readBytes(bytes, element, index + offset)
-					omitEmptyOnRead ? result.push(element) : result[i] = element
+					omitEmptyOnRead ? result.push(element) : (result[i] = element)
 				}
 				return result
 			},
@@ -133,16 +133,15 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 			size: _type.size * size,
 			readBytes: function (bytes: Uint8Array, view: DataView, index: number): InferOutputType<T>[] {
 				const result = omitEmptyOnRead ? [] : Array(size)
-				
+
 				for (let i = 0; i < size; i++) {
-					
 					const offset = i * _type.size
 					if (omitEmptyOnRead && emptyArrayElement(bytes, index + offset, _type.size)) {
 						continue
 					}
-					
+
 					const element = _type.readBytes(bytes, view, index + offset, littleEndian)
-					omitEmptyOnRead ? result.push(element) : result[i] = element
+					omitEmptyOnRead ? result.push(element) : (result[i] = element)
 				}
 				return result
 			},
@@ -156,4 +155,75 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 			}
 		}
 	}
+}
+
+export function union<const T extends readonly Property[]>(union: T): StructuredType<InferOutputType<T>> {
+	const map: PropertyMap = new Map()
+	let size = 0;
+
+	const process = (map: PropertyMap, struct: T | readonly Property[], size: { value: number }) => {
+		let i = 0
+
+		for (const [name, type] of struct) {
+			if (Array.isArray(type)) {
+				const _map = new Map()
+				process(_map, type, size)
+				map.set(name, _map)
+			} else if (type instanceof Structured) {
+				map.set(name, new Map(type.map))
+				size.value += type.size
+			} else {
+				const _type = type as StructuredType<any>
+
+				assert(typeof name === "string", `property ${i} "name must be a string`)
+				assert(typeof _type === "object", `property ${i} type must be an object`)
+				assert(typeof _type.size === "number", `property ${i} type requires a size property`)
+				assert(typeof _type.readBytes === "function", `property ${i} type requires a readByte function`)
+				assert(typeof _type.writeBytes === "function", `property ${i} type requires a writeByte function`)
+
+				map.set(name, _type)
+				size.value += _type.size
+			}
+
+			i++
+		}
+	}
+
+	for (const [name, type] of union) {
+		const _size = { value: 0 }
+		let i = 0
+
+		if (Array.isArray(type)) {
+			const _map = new Map()
+			process(_map, type, _size)
+			map.set(name, _map)
+		} else if (type instanceof Structured) {
+			map.set(name, new Map(type.map))
+			_size.value = type.size
+		} else {
+			const _type = type as StructuredType<any>
+
+			assert(typeof name === "string", `property ${i} "name must be a string`)
+			assert(typeof _type === "object", `property ${i} type must be an object`)
+			assert(typeof _type.size === "number", `property ${i} type requires a size property`)
+			assert(typeof _type.readBytes === "function", `property ${i} type requires a readByte function`)
+			assert(typeof _type.writeBytes === "function", `property ${i} type requires a writeByte function`)
+
+			map.set(name, _type)
+			_size.value = _type.size
+		}
+		
+		console.log(_size.value, _size)
+
+		if (_size.value > size) {
+			size = _size.value
+		}
+
+		i++
+	}
+
+	console.log(map)
+
+	// @ts-ignore
+	return {}
 }
