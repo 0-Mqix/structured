@@ -4,6 +4,68 @@ function assert(value, message) {
     throw new Error(message);
   }
 }
+function emptyArrayElement(bytes, offset, elementSize) {
+  let empty = true;
+  for (let j = 0;j < elementSize; j++) {
+    if (bytes[offset + j] != 0) {
+      empty = false;
+      break;
+    }
+  }
+  return empty;
+}
+function assertStructuredType(name, index, type) {
+  assert(typeof name === "string", `property ${index} "name must be a string`);
+  assert(typeof type === "object", `property ${index} type must be an object`);
+  assert(typeof type.size === "number", `property ${index} type requires a size property`);
+  assert(typeof type.readBytes === "function", `property ${index} type requires a readByte function`);
+  assert(typeof type.writeBytes === "function", `property ${index} type requires a writeByte function`);
+}
+function loadPropertyMap(map, struct, size) {
+  let i = 0;
+  for (const [name, type] of struct) {
+    if (Array.isArray(type)) {
+      const _map = new Map;
+      loadPropertyMap(_map, type, size);
+      map.set(name, _map);
+    } else if (type instanceof Structured) {
+      map.set(name, new Map(type.map));
+      size.value += type.size;
+    } else {
+      const _type = type;
+      assertStructuredType(name, i, _type);
+      map.set(name, _type);
+      size.value += _type.size;
+    }
+    i++;
+  }
+}
+function readBytes(object, map, bytes, view, index, littleEndian) {
+  for (const [name, type] of map) {
+    if (type instanceof Map) {
+      if (typeof object[name] != "object") {
+        object[name] = {};
+      }
+      index = readBytes(object[name], type, bytes, view, index, littleEndian);
+    } else {
+      object[name] = type.readBytes(bytes, view, index, littleEndian);
+      index += type.size;
+    }
+  }
+  return index;
+}
+function writeBytes(object, map, bytes, view, index, littleEndian) {
+  for (const [name, type] of map) {
+    if (type instanceof Map) {
+      index = writeBytes(object[name], type, bytes, view, index, littleEndian);
+    } else {
+      assert(Object.hasOwn(object, name), "object has not the property");
+      type.writeBytes(object[name], bytes, view, index, littleEndian);
+      index += type.size;
+    }
+  }
+  return index;
+}
 
 // src/structured.ts
 class Structured {
@@ -12,60 +74,17 @@ class Structured {
   littleEndian;
   constructor(littleEndian, struct) {
     this.littleEndian = littleEndian;
-    let i = 0;
-    const process = (map, struct2) => {
-      for (const [name, type] of struct2) {
-        if (Array.isArray(type)) {
-          const _map = new Map;
-          process(_map, type);
-          map.set(name, _map);
-        } else if (type instanceof Structured) {
-          map.set(name, new Map(type.map));
-          this.size += type.size;
-        } else {
-          const _type = type;
-          assert(typeof name === "string", `property ${i} "name must be a string`);
-          assert(typeof _type === "object", `property ${i} type must be an object`);
-          assert(typeof _type.size === "number", `property ${i} type requires a size property`);
-          assert(typeof _type.readBytes === "function", `property ${i} type requires a readByte function`);
-          assert(typeof _type.writeBytes === "function", `property ${i} type requires a writeByte function`);
-          map.set(name, _type);
-          this.size += _type.size;
-        }
-        i++;
-      }
-    };
-    process(this.map, struct);
+    const _size = { value: 0 };
+    loadPropertyMap(this.map, struct, _size);
+    this.size = _size.value;
   }
   readBytes(bytes, result, index = 0) {
     const view = new DataView(bytes.buffer);
-    const process = (result2, map) => {
-      for (const [name, type] of map) {
-        if (type instanceof Map) {
-          result2[name] = {};
-          process(result2[name], type);
-        } else {
-          result2[name] = type.readBytes(bytes, view, index, this.littleEndian);
-          index += type.size;
-        }
-      }
-    };
-    process(result, this.map);
+    readBytes(result, this.map, bytes, view, index, this.littleEndian);
   }
   writeBytes(object, bytes, index = 0) {
     const view = new DataView(bytes.buffer);
-    const process = (_object, map) => {
-      for (const [name, type] of map) {
-        if (type instanceof Map) {
-          process(_object[name], type);
-        } else {
-          assert(Object.hasOwn(_object, name), "object has not the property");
-          type.writeBytes(_object[name], bytes, view, index, this.littleEndian);
-          index += type.size;
-        }
-      }
-    };
-    process(object, this.map);
+    writeBytes(object, this.map, bytes, view, index, this.littleEndian);
   }
   toBytes(object) {
     const bytes = new Uint8Array(this.size);
@@ -115,16 +134,6 @@ function string(size) {
     }
   };
 }
-var emptyArrayElement = function(bytes, offset, elementSize) {
-  let empty = true;
-  for (let j = 0;j < elementSize; j++) {
-    if (bytes[offset + j] != 0) {
-      empty = false;
-      break;
-    }
-  }
-  return empty;
-};
 function array(size, type, littleEndian, omitEmptyOnRead = false) {
   if (Array.isArray(type)) {
     type = new Structured(littleEndian, type);
@@ -182,6 +191,60 @@ function array(size, type, littleEndian, omitEmptyOnRead = false) {
     };
   }
 }
+function union(union2) {
+  const map = new Map;
+  let size = 0;
+  for (const [name, type] of union2) {
+    const _size = { value: 0 };
+    let i = 0;
+    if (Array.isArray(type)) {
+      const _map = new Map;
+      loadPropertyMap(_map, type, _size);
+      map.set(name, _map);
+    } else if (type instanceof Structured) {
+      map.set(name, new Map(type.map));
+      _size.value = type.size;
+    } else {
+      const _type = type;
+      assertStructuredType(name, i, _type);
+      map.set(name, _type);
+      _size.value = _type.size;
+    }
+    if (_size.value > size) {
+      size = _size.value;
+    }
+    i++;
+  }
+  return {
+    size,
+    readBytes: function(bytes, view, index, littleEndian) {
+      const result = {};
+      for (const [name, type] of map) {
+        if (type instanceof Map) {
+          result[name] = {};
+          readBytes(result[name], type, bytes, view, index, littleEndian);
+        } else {
+          result[name] = type.readBytes(bytes, view, index, littleEndian);
+        }
+      }
+      return result;
+    },
+    writeBytes: function(value, bytes, view, index, littleEndian) {
+      let done = false;
+      for (const [_name, type] of map) {
+        if (!Object.hasOwn(value, _name))
+          continue;
+        assert(!done, "union has multiple properties defined");
+        done = true;
+        if (type instanceof Map) {
+          writeBytes(value[_name], type, bytes, view, index, littleEndian);
+        } else {
+          type.writeBytes(value[_name], bytes, view, index, littleEndian);
+        }
+      }
+    }
+  };
+}
 var uint8 = createDataViewType("Uint8", 1);
 var int8 = createDataViewType("Int8", 1);
 var uint16 = createDataViewType("Uint16", 2);
@@ -204,6 +267,7 @@ var bool = {
   }
 };
 export {
+  union,
   uint8,
   uint64,
   uint32,

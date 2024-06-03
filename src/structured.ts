@@ -1,4 +1,4 @@
-import { assert } from "./utils"
+import { assert, loadPropertyMap, readBytes, writeBytes } from "./utils"
 
 export interface StructuredType<T> {
 	size: number
@@ -29,72 +29,19 @@ export default class Structured<const T extends readonly Property[]> {
 
 	constructor(littleEndian: boolean, struct: T) {
 		this.littleEndian = littleEndian
-
-		let i = 0
-
-		const process = (map: PropertyMap, struct: T | readonly Property[]) => {
-			for (const [name, type] of struct) {
-				if (Array.isArray(type)) {
-					const _map = new Map()
-					process(_map, type)
-					map.set(name, _map)
-				} else if (type instanceof Structured) {
-					map.set(name, new Map(type.map))
-					this.size += type.size	
-				} else {
-					const _type = type as StructuredType<any>
-
-					assert(typeof name === "string", `property ${i} "name must be a string`)
-					assert(typeof _type === "object", `property ${i} type must be an object`)
-					assert(typeof _type.size === "number", `property ${i} type requires a size property`)
-					assert(typeof _type.readBytes === "function", `property ${i} type requires a readByte function`)
-					assert(typeof _type.writeBytes === "function", `property ${i} type requires a writeByte function`)
-
-					map.set(name, _type)
-					this.size += _type.size
-				}
-
-				i++
-			}
-		}
-
-		process(this.map, struct)
+		const _size = {value: 0}
+		loadPropertyMap(this.map, struct, _size)
+		this.size = _size.value
 	}
 
 	readBytes(bytes: Uint8Array, result: StructToObject<T>, index = 0) {
 		const view = new DataView(bytes.buffer)
-
-		const process = (result: { [key: string]: any }, map: PropertyMap) => {
-			for (const [name, type] of map) {
-				if (type instanceof Map) {
-					result[name] = {}
-					process(result[name], type)
-				} else {
-					result[name] = type.readBytes(bytes, view, index, this.littleEndian)
-					index += type.size
-				}
-			}
-		}
-
-		process(result, this.map)
+		readBytes(result, this.map, bytes, view, index, this.littleEndian)
 	}
 
 	writeBytes(object: StructToObject<T>, bytes: Uint8Array, index = 0) {
         const view = new DataView(bytes.buffer)
-
-		const process = (_object: { [key: string]: any }, map: PropertyMap) => {
-			for (const [name, type] of map) {
-                if (type instanceof Map) {
-					process(_object[name], type)
-				} else {
-					assert(Object.hasOwn(_object, name), "object has not the property")
-					type.writeBytes(_object[name], bytes, view, index, this.littleEndian)
-					index += type.size
-				}
-			}
-		}
-
-		process(object, this.map)
+		writeBytes(object, this.map, bytes, view, index, this.littleEndian)
 	}
 
 	toBytes(object: StructToObject<T>): Uint8Array {
