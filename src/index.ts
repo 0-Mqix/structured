@@ -10,19 +10,21 @@ export interface StructuredType<T> {
 	writeBytes(value: T, bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): void
 }
 
-type Property = readonly [string, StructuredType<any> | readonly Property[]]
+type Property = readonly [string, StructuredType<any> | readonly Property[] | Structured<any>]
 
 type InferStructuredType<T> = T extends StructuredType<infer U>
 	? U
 	: T extends readonly Property[]
 	? StructToObject<T>
+	: T extends Structured<infer Struct>
+	? StructToObject<Struct>
 	: never
 
 type StructToObject<T extends readonly Property[]> = {
 	[K in T[number] as K[0]]: InferStructuredType<K[1]>
 } & {}
 
-type PropertyMap = Map<string, StructuredType<any> | Map<string, StructuredType<any>>>
+type PropertyMap = Map<string, StructuredType<any> | Map<string, StructuredType<any>> | PropertyMap>
 
 export default class Structured<const T extends readonly Property[]> {
 	map: PropertyMap = new Map()
@@ -40,6 +42,9 @@ export default class Structured<const T extends readonly Property[]> {
 					const _map = new Map()
 					process(_map, type)
 					map.set(name, _map)
+				} else if (type instanceof Structured) {
+					map.set(name, new Map(type.map))
+					this.size += type.size	
 				} else {
 					const _type = type as StructuredType<any>
 
@@ -60,7 +65,7 @@ export default class Structured<const T extends readonly Property[]> {
 		process(this.map, struct)
 	}
 
-	readBytes(bytes: Uint8Array, result: StructToObject<T>)  {
+	readBytes(bytes: Uint8Array, result: StructToObject<T>) {
 		assert(bytes.length == this.size, "the length of the bytes do not match")
 
 		const view = new DataView(bytes.buffer)
@@ -82,7 +87,7 @@ export default class Structured<const T extends readonly Property[]> {
 	}
 
 	writeBytes(object: StructToObject<T>, bytes: Uint8Array) {
-		assert(bytes.length == this.size, "the length of the bytes do not match");
+		assert(bytes.length == this.size, "the length of the bytes do not match")
 		const view = new DataView(bytes.buffer)
 		let index = 0
 
@@ -106,7 +111,6 @@ export default class Structured<const T extends readonly Property[]> {
 		this.writeBytes(object, bytes)
 		return bytes
 	}
-
 
 	fromBytes(bytes: Uint8Array): StructToObject<T> {
 		const object = {} as StructToObject<T>

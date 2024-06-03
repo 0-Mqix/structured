@@ -4,12 +4,12 @@ export interface StructuredType<T> {
     readBytes(bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): T;
     writeBytes(value: T, bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): void;
 }
-type Property = readonly [string, StructuredType<any> | readonly Property[]];
-type InferStructuredType<T> = T extends StructuredType<infer U> ? U : T extends readonly Property[] ? StructToObject<T> : never;
+type Property = readonly [string, StructuredType<any> | readonly Property[] | Structured<any>];
+type InferStructuredType<T> = T extends StructuredType<infer U> ? U : T extends readonly Property[] ? StructToObject<T> : T extends Structured<infer Struct> ? StructToObject<Struct> : never;
 type StructToObject<T extends readonly Property[]> = {
     [K in T[number] as K[0]]: InferStructuredType<K[1]>;
 } & {};
-type PropertyMap = Map<string, StructuredType<any> | Map<string, StructuredType<any>>>;
+type PropertyMap = Map<string, StructuredType<any> | Map<string, StructuredType<any>> | PropertyMap>;
 export default class Structured<const T extends readonly Property[]> {
     map: PropertyMap;
     size: number;

@@ -50,12 +50,15 @@ export function string(size: number): StructuredType<string> {
 		size: size,
 		readBytes: function (bytes: Uint8Array, _: DataView, index: number): string {
 			let result = ""
-			for (const byte of bytes) {
+
+			for (let i = 0; i < size; i++) {
+				const byte = bytes[i + index]	
 				if (byte == 0) {
 					break;
 				}
 				result += String.fromCharCode(byte)
-			}	
+			}
+			
 			return result;		
 		},
 		writeBytes: function (value: string, bytes: Uint8Array, _: DataView, index: number) {

@@ -23,7 +23,8 @@ function string(size) {
     size,
     readBytes: function(bytes, _, index) {
       let result = "";
-      for (const byte of bytes) {
+      for (let i = 0;i < size; i++) {
+        const byte = bytes[i + index];
         if (byte == 0) {
           break;
         }
@@ -77,6 +78,9 @@ class Structured {
           const _map = new Map;
           process(_map, type);
           map.set(name, _map);
+        } else if (type instanceof Structured) {
+          map.set(name, new Map(type.map));
+          this.size += type.size;
         } else {
           const _type = type;
           assert(typeof name === "string", `property ${i} "name must be a string`);
