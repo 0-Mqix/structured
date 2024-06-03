@@ -1,4 +1,4 @@
-import type { StructuredType } from ".";
+import { assert, type StructuredType } from ".";
 
 function createDataViewType<T>(type: string, size: number): StructuredType<T> {
 	return {
@@ -40,5 +40,31 @@ export const bool: StructuredType<boolean> = {
 	},
 	writeBytes: function (value: boolean, bytes: Uint8Array, _: DataView, index: number) {
 		bytes[index] = value ? 1 : 0
+	}
+}
+			
+export function string(size: number): StructuredType<string> {
+	const encoder = new TextEncoder();
+
+	return {
+		size: size,
+		readBytes: function (bytes: Uint8Array, _: DataView, index: number): string {
+			let result = ""
+			for (const byte of bytes) {
+				if (byte == 0) {
+					break;
+				}
+				result += String.fromCharCode(byte)
+			}	
+			return result;		
+		},
+		writeBytes: function (value: string, bytes: Uint8Array, _: DataView, index: number) {
+			assert(value.length < size, "string is larger then expected")
+			let i = 0;			
+			for (const byte of encoder.encode(value)) {
+				bytes[index + i] = byte;
+				i++
+			}
+		}
 	}
 }

@@ -1,9 +1,9 @@
 // src/index.ts
-var assert = function(value, message) {
+function assert(value, message) {
   if (!value) {
     throw new Error(message);
   }
-};
+}
 
 // src/types.ts
 var createDataViewType = function(type, size) {
@@ -17,6 +17,30 @@ var createDataViewType = function(type, size) {
     }
   };
 };
+function string(size) {
+  const encoder = new TextEncoder;
+  return {
+    size,
+    readBytes: function(bytes, _, index) {
+      let result = "";
+      for (const byte of bytes) {
+        if (byte == 0) {
+          break;
+        }
+        result += String.fromCharCode(byte);
+      }
+      return result;
+    },
+    writeBytes: function(value, bytes, _, index) {
+      assert(value.length < size, "string is larger then expected");
+      let i = 0;
+      for (const byte of encoder.encode(value)) {
+        bytes[index + i] = byte;
+        i++;
+      }
+    }
+  };
+}
 var uint8 = createDataViewType("Uint8", 1);
 var int8 = createDataViewType("Int8", 1);
 var uint16 = createDataViewType("Uint16", 2);
@@ -118,6 +142,7 @@ export {
   uint64,
   uint32,
   uint16,
+  string,
   long,
   int8,
   int64,
@@ -127,5 +152,6 @@ export {
   float32,
   double,
   Structured as default,
-  bool
+  bool,
+  assert
 };

@@ -1,33 +1,18 @@
 import { expect, test } from "bun:test"
-import Structured, { uint32, float32, uint8, bool, long } from "./src"
+import Structured, { uint32, float32, uint8, bool, long, string } from "./src"
 
 test("simple", () => {
 	var x = new Structured(true, [
-		["friends", uint32],
-		["size", float32],
-		[
-			"nested",
-			[
-				["1", uint8],
-				["2", uint8],
-				["3", bool],
-				["4", [["money", long]]]
-			]
-		]
+		["name", string(4)],
 	])
 
 	const input = {
-		friends: 1000,
-		size: 15.5,
-		nested: {
-			1: 0,
-			2: 4,
-			3: true,
-			4: { money: BigInt(2234234) }
-		}
+		name: "max"
 	}
 
 	const bytes = x.toBytes(input)
+	console.log("bytes:", bytes)
 	const output = x.fromBytes(bytes)
+	console.log("output", output)
 	expect(output).toStrictEqual(input)
 })

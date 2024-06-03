@@ -1,3 +1,4 @@
+export declare function assert(value: boolean, message?: string): void;
 export interface StructuredType<T> {
     size: number;
     readBytes(bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): T;

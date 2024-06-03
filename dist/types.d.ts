@@ -1,4 +1,4 @@
-import type { StructuredType } from ".";
+import { type StructuredType } from ".";
 export declare const uint8: StructuredType<number>;
 export declare const int8: StructuredType<number>;
 export declare const uint16: StructuredType<number>;
@@ -12,3 +12,4 @@ export declare const uint64: StructuredType<bigint>;
 export declare const double: StructuredType<number>;
 export declare const long: StructuredType<bigint>;
 export declare const bool: StructuredType<boolean>;
+export declare function string(size: number): StructuredType<string>;
