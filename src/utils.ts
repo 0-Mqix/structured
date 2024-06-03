@@ -63,7 +63,6 @@ export function readBytes(
 			if (typeof object[name] != "object") {
 				object[name] = {}
 			}
-			
 			index = readBytes(object[name], type, bytes, view, index, littleEndian)
 		} else {
 			object[name] = type.readBytes(bytes, view, index, littleEndian)

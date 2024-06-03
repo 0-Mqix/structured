@@ -2,7 +2,7 @@ import { assert, loadPropertyMap, readBytes, writeBytes } from "./utils"
 
 export interface StructuredType<T> {
 	size: number
-	readBytes(bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): T
+	readBytes(bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean, result?: T): T
 	writeBytes(value: T, bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): void
 }
 
@@ -34,14 +34,14 @@ export default class Structured<const T extends readonly Property[]> {
 		this.size = _size.value
 	}
 
-	readBytes(bytes: Uint8Array, result: StructToObject<T>, index = 0) {
+	readBytes(bytes: Uint8Array, object: StructToObject<T>, index = 0, littleEndian?: boolean) {
 		const view = new DataView(bytes.buffer)
-		readBytes(result, this.map, bytes, view, index, this.littleEndian)
+		readBytes(object, this.map, bytes, view, index, littleEndian ?? this.littleEndian)
 	}
 
-	writeBytes(object: StructToObject<T>, bytes: Uint8Array, index = 0) {
+	writeBytes(object: StructToObject<T>, bytes: Uint8Array, index = 0, littleEndian?: boolean) {
         const view = new DataView(bytes.buffer)
-		writeBytes(object, this.map, bytes, view, index, this.littleEndian)
+		writeBytes(object, this.map, bytes, view, index, littleEndian ?? this.littleEndian)
 	}
 
 	toBytes(object: StructToObject<T>): Uint8Array {

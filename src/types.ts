@@ -75,7 +75,6 @@ export function string(size: number): StructuredType<string> {
 export function array<const T extends StructuredType<any> | Structured<any> | readonly Property[]>(
 	size: number,
 	type: T,
-	littleEndian: boolean,
 	omitEmptyOnRead = false
 ): StructuredType<InferOutputType<T>[]> {
 	if (Array.isArray(type)) {
@@ -88,7 +87,7 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 
 		return {
 			size: type.size * size,
-			readBytes: function (bytes: Uint8Array, _: DataView, index: number): InferOutputType<T>[] {
+			readBytes: function (bytes: Uint8Array, _: DataView, index: number, littleEndian): InferOutputType<T>[] {
 				const result = omitEmptyOnRead ? [] : Array(size)
 
 				for (let i = 0; i < size; i++) {
@@ -99,17 +98,17 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 					}
 
 					const element = {} as InferOutputType<T>
-					struct.readBytes(bytes, element, index + offset)
+					struct.readBytes(bytes, element, index + offset, littleEndian)
 					omitEmptyOnRead ? result.push(element) : (result[i] = element)
 				}
 				return result
 			},
 
-			writeBytes: function (value: InferOutputType<T>[], bytes: Uint8Array, _: DataView, index: number): void {
+			writeBytes: function (value: InferOutputType<T>[], bytes: Uint8Array, _: DataView, index: number, littleEndian): void {
 				assert(value.length <= size, "array is larger then expected")
 				for (let i = 0; i < size; i++) {
 					if (value[i] == undefined) continue
-					struct.writeBytes(value[i], bytes, i * struct.size + index)
+					struct.writeBytes(value[i], bytes, i * struct.size + index, littleEndian)
 				}
 			}
 		}
@@ -118,7 +117,7 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 
 		return {
 			size: _type.size * size,
-			readBytes: function (bytes: Uint8Array, view: DataView, index: number): InferOutputType<T>[] {
+			readBytes: function (bytes: Uint8Array, view: DataView, index: number, littleEndian): InferOutputType<T>[] {
 				const result = omitEmptyOnRead ? [] : Array(size)
 
 				for (let i = 0; i < size; i++) {
@@ -133,7 +132,7 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 				return result
 			},
 
-			writeBytes: function (value: InferOutputType<T>[], bytes: Uint8Array, view: DataView, index: number): void {
+			writeBytes: function (value: InferOutputType<T>[], bytes: Uint8Array, view: DataView, index: number, littleEndian): void {
 				assert(value.length <= size, "array is larger then expected")
 				for (let i = 0; i < size; i++) {
 					if (value[i] == undefined) continue

@@ -40,27 +40,27 @@ function loadPropertyMap(map, struct, size) {
     i++;
   }
 }
-function readBytes(object, map, bytes, view, index, littleEndian) {
+function readBytes(object, map, bytes, view, index, littleEndian2) {
   for (const [name, type] of map) {
     if (type instanceof Map) {
       if (typeof object[name] != "object") {
         object[name] = {};
       }
-      index = readBytes(object[name], type, bytes, view, index, littleEndian);
+      index = readBytes(object[name], type, bytes, view, index, littleEndian2);
     } else {
-      object[name] = type.readBytes(bytes, view, index, littleEndian);
+      object[name] = type.readBytes(bytes, view, index, littleEndian2);
       index += type.size;
     }
   }
   return index;
 }
-function writeBytes(object, map, bytes, view, index, littleEndian) {
+function writeBytes(object, map, bytes, view, index, littleEndian2) {
   for (const [name, type] of map) {
     if (type instanceof Map) {
-      index = writeBytes(object[name], type, bytes, view, index, littleEndian);
+      index = writeBytes(object[name], type, bytes, view, index, littleEndian2);
     } else {
       assert(Object.hasOwn(object, name), "object has not the property");
-      type.writeBytes(object[name], bytes, view, index, littleEndian);
+      type.writeBytes(object[name], bytes, view, index, littleEndian2);
       index += type.size;
     }
   }
@@ -72,19 +72,19 @@ class Structured {
   map = new Map;
   size = 0;
   littleEndian;
-  constructor(littleEndian, struct) {
-    this.littleEndian = littleEndian;
+  constructor(littleEndian2, struct) {
+    this.littleEndian = littleEndian2;
     const _size = { value: 0 };
     loadPropertyMap(this.map, struct, _size);
     this.size = _size.value;
   }
-  readBytes(bytes, result, index = 0) {
+  readBytes(bytes, object, index = 0, littleEndian2) {
     const view = new DataView(bytes.buffer);
-    readBytes(result, this.map, bytes, view, index, this.littleEndian);
+    readBytes(object, this.map, bytes, view, index, littleEndian2 ?? this.littleEndian);
   }
-  writeBytes(object, bytes, index = 0) {
+  writeBytes(object, bytes, index = 0, littleEndian2) {
     const view = new DataView(bytes.buffer);
-    writeBytes(object, this.map, bytes, view, index, this.littleEndian);
+    writeBytes(object, this.map, bytes, view, index, littleEndian2 ?? this.littleEndian);
   }
   toBytes(object) {
     const bytes = new Uint8Array(this.size);
@@ -101,11 +101,11 @@ class Structured {
 var createDataViewType = function(type, size) {
   return {
     size,
-    readBytes: (_, view, index, littleEndian) => {
-      return view[`get${type}`](index, littleEndian);
+    readBytes: (_, view, index, littleEndian2) => {
+      return view[`get${type}`](index, littleEndian2);
     },
-    writeBytes: (value, _, view, index, littleEndian) => {
-      view[`set${type}`](index, value, littleEndian);
+    writeBytes: (value, _, view, index, littleEndian2) => {
+      view[`set${type}`](index, value, littleEndian2);
     }
   };
 };
@@ -134,7 +134,7 @@ function string(size) {
     }
   };
 }
-function array(size, type, littleEndian, omitEmptyOnRead = false) {
+function array(size, type, omitEmptyOnRead = false) {
   if (Array.isArray(type)) {
     type = new Structured(littleEndian, type);
   }
@@ -142,7 +142,7 @@ function array(size, type, littleEndian, omitEmptyOnRead = false) {
     const struct = type;
     return {
       size: type.size * size,
-      readBytes: function(bytes, _, index) {
+      readBytes: function(bytes, _, index, littleEndian2) {
         const result = omitEmptyOnRead ? [] : Array(size);
         for (let i = 0;i < size; i++) {
           const offset = i * struct.size;
@@ -150,17 +150,17 @@ function array(size, type, littleEndian, omitEmptyOnRead = false) {
             continue;
           }
           const element = {};
-          struct.readBytes(bytes, element, index + offset);
+          struct.readBytes(bytes, element, index + offset, littleEndian2);
           omitEmptyOnRead ? result.push(element) : result[i] = element;
         }
         return result;
       },
-      writeBytes: function(value, bytes, _, index) {
+      writeBytes: function(value, bytes, _, index, littleEndian2) {
         assert(value.length <= size, "array is larger then expected");
         for (let i = 0;i < size; i++) {
           if (value[i] == undefined)
             continue;
-          struct.writeBytes(value[i], bytes, i * struct.size + index);
+          struct.writeBytes(value[i], bytes, i * struct.size + index, littleEndian2);
         }
       }
     };
@@ -168,24 +168,24 @@ function array(size, type, littleEndian, omitEmptyOnRead = false) {
     const _type = type;
     return {
       size: _type.size * size,
-      readBytes: function(bytes, view, index) {
+      readBytes: function(bytes, view, index, littleEndian2) {
         const result = omitEmptyOnRead ? [] : Array(size);
         for (let i = 0;i < size; i++) {
           const offset = i * _type.size;
           if (omitEmptyOnRead && emptyArrayElement(bytes, index + offset, _type.size)) {
             continue;
           }
-          const element = _type.readBytes(bytes, view, index + offset, littleEndian);
+          const element = _type.readBytes(bytes, view, index + offset, littleEndian2);
           omitEmptyOnRead ? result.push(element) : result[i] = element;
         }
         return result;
       },
-      writeBytes: function(value, bytes, view, index) {
+      writeBytes: function(value, bytes, view, index, littleEndian2) {
         assert(value.length <= size, "array is larger then expected");
         for (let i = 0;i < size; i++) {
           if (value[i] == undefined)
             continue;
-          _type.writeBytes(value[i], bytes, view, i * _type.size + index, littleEndian);
+          _type.writeBytes(value[i], bytes, view, i * _type.size + index, littleEndian2);
         }
       }
     };
@@ -217,19 +217,19 @@ function union(union2) {
   }
   return {
     size,
-    readBytes: function(bytes, view, index, littleEndian) {
+    readBytes: function(bytes, view, index, littleEndian2) {
       const result = {};
       for (const [name, type] of map) {
         if (type instanceof Map) {
           result[name] = {};
-          readBytes(result[name], type, bytes, view, index, littleEndian);
+          readBytes(result[name], type, bytes, view, index, littleEndian2);
         } else {
-          result[name] = type.readBytes(bytes, view, index, littleEndian);
+          result[name] = type.readBytes(bytes, view, index, littleEndian2);
         }
       }
       return result;
     },
-    writeBytes: function(value, bytes, view, index, littleEndian) {
+    writeBytes: function(value, bytes, view, index, littleEndian2) {
       let done = false;
       for (const [_name, type] of map) {
         if (!Object.hasOwn(value, _name))
@@ -237,9 +237,9 @@ function union(union2) {
         assert(!done, "union has multiple properties defined");
         done = true;
         if (type instanceof Map) {
-          writeBytes(value[_name], type, bytes, view, index, littleEndian);
+          writeBytes(value[_name], type, bytes, view, index, littleEndian2);
         } else {
-          type.writeBytes(value[_name], bytes, view, index, littleEndian);
+          type.writeBytes(value[_name], bytes, view, index, littleEndian2);
         }
       }
     }
