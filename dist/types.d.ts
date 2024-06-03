@@ -1,4 +1,4 @@
-import { type StructuredType } from ".";
+import Structured, { type StructuredType, type Property, type InferOutputType } from "./structured";
 export declare const uint8: StructuredType<number>;
 export declare const int8: StructuredType<number>;
 export declare const uint16: StructuredType<number>;
@@ -13,3 +13,4 @@ export declare const double: StructuredType<number>;
 export declare const long: StructuredType<bigint>;
 export declare const bool: StructuredType<boolean>;
 export declare function string(size: number): StructuredType<string>;
+export declare function array<const T extends StructuredType<any> | Structured<any> | readonly Property[]>(size: number, type: T, littleEndian: boolean, omitEmptyOnRead?: boolean): StructuredType<InferOutputType<T>[]>;
