@@ -10,7 +10,7 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 
 	if (Array.isArray(type)) {
 		//@ts-ignore
-		_type = new Structured(littleEndian, _type)
+		_type = new Structured(true, _type)
 	}
 
 	const structured = _type instanceof Structured
