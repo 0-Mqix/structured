@@ -13,7 +13,7 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 		_type = new Structured(littleEndian, _type)
 	}
 
-	let structured = _type instanceof Structured
+	const structured = _type instanceof Structured
 
 	return {
 		//@ts-ignore
