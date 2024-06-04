@@ -16,10 +16,10 @@ function emptyArrayElement(bytes, offset, elementSize) {
 }
 function assertStructuredType(name, index, type) {
   assert(typeof name === "string", `property ${index} "name must be a string`);
-  assert(typeof type === "object", `property ${index} type must be an object`);
-  assert(typeof type.size === "number", `property ${index} type requires a size property`);
-  assert(type.readBytes != null != (type.fromBytes != null), `property ${index} type can only can have a readBytes or fromBytes function not both`);
-  assert(type.readBytes != null || type.fromBytes != null, `property ${index} type requires a readBytes or fromBytes function`);
+  assert(typeof type === "object", `property ${index}:${name} type must be an object`);
+  assert(typeof type.size === "number", `property ${index}:${name} type requires a size property`);
+  assert(type.readBytes != null != (type.fromBytes != null), `property ${index}:${name} type can only can have a readBytes or fromBytes function not both`);
+  assert(type.readBytes == undefined || type.fromBytes == undefined, `property ${index}:${name} type requires a readBytes or fromBytes function`);
 }
 function loadPropertyMap(map, struct, size) {
   let i2 = 0;
@@ -41,7 +41,6 @@ function loadPropertyMap(map, struct, size) {
   }
 }
 function readBytes(result, map, bytes, view, index, littleEndian2) {
-  console.log("result in", result);
   for (const [name, type] of map) {
     if (type instanceof Map) {
       if (typeof result[name] != "object") {
@@ -53,7 +52,6 @@ function readBytes(result, map, bytes, view, index, littleEndian2) {
         if (typeof result[name] != "object") {
           result[name] = type.array ? [] : {};
         }
-        console.log(result[name]);
         type.readBytes(bytes, result[name], view, index, littleEndian2);
       } else {
         result[name] = type.fromBytes(bytes, view, index, littleEndian2);
@@ -61,7 +59,6 @@ function readBytes(result, map, bytes, view, index, littleEndian2) {
       index += type.size;
     }
   }
-  console.log("result out", result);
   return index;
 }
 function writeBytes(object, map, bytes, view, index, littleEndian2) {
@@ -146,6 +143,8 @@ function string(size) {
     }
   };
 }
+
+// src/array.ts
 function array(size, type, omitEmptyRead = false) {
   let _type = type;
   if (Array.isArray(type)) {
@@ -177,6 +176,7 @@ function array(size, type, omitEmptyRead = false) {
         }
         if (omitEmptyRead && emptyArrayElement(bytes, offset, _type.size)) {
           result.splice(i2, 1);
+          i2--;
           continue;
         }
         if (structured3 || _type.readBytes) {
@@ -187,8 +187,6 @@ function array(size, type, omitEmptyRead = false) {
           result[i2] = _type.fromBytes(bytes, view, offset, littleEndian2);
         }
       }
-      console.log("output", result);
-      console.log("----------------------------");
     },
     writeBytes: function(value, bytes, view, index, littleEndian2) {
       assert(value.length <= size, "array is larger then expected");
@@ -204,6 +202,7 @@ function array(size, type, omitEmptyRead = false) {
     }
   };
 }
+// src/union.ts
 function union(union2) {
   const map = new Map;
   let size = 0;
@@ -264,6 +263,17 @@ function union(union2) {
     }
   };
 }
+
+// src/types.ts
+var bool = {
+  size: 1,
+  fromBytes: function(bytes, _, index) {
+    return bytes[index] ? true : false;
+  },
+  writeBytes: function(value, bytes, _, index) {
+    bytes[index] = value ? 1 : 0;
+  }
+};
 var uint8 = createDataViewType("Uint8", 1);
 var int8 = createDataViewType("Int8", 1);
 var uint16 = createDataViewType("Uint16", 2);
@@ -276,15 +286,6 @@ var int64 = createDataViewType("BigInt64", 8);
 var uint64 = createDataViewType("BigUint64", 8);
 var double = float64;
 var long = int64;
-var bool = {
-  size: 1,
-  fromBytes: function(bytes, _, index) {
-    return bytes[index] ? true : false;
-  },
-  writeBytes: function(value, bytes, _, index) {
-    bytes[index] = value ? 1 : 0;
-  }
-};
 export {
   union,
   uint8,
