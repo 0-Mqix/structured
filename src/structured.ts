@@ -1,5 +1,21 @@
 import { assert, loadPropertyMap, readBytes, writeBytes } from "./utils"
+/*
+ * StructuredType<T>
 
+ */
+
+
+/**
+ * **StructuredType<T>**
+ * 
+ * This is the interface that all the types have.
+ *
+ * `size` is the fixed ammount of bytes the type consumes in the memory layout.
+ * 
+ * Implement fromBytes if you want to create an inmutable type.
+ * Else if you want to create mutable type you need implement the readBytes function.
+ * You cant have both.
+ */
 export interface StructuredType<T> {
 	size: number
 	fromBytes?(bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): T
@@ -35,6 +51,7 @@ export default class Structured<const T extends readonly Property[]> {
 		this.size = _size.value
 	}
 
+	// If the shape of the result object(s) are the same no new objects are created and all old ones are reused.
 	readBytes(bytes: Uint8Array, result: StructToObject<T>, view?: DataView, index = 0, littleEndian?: boolean) {
 		assert(typeof result == "object", "result is undefined")
 		if (!view) view = new DataView(bytes.buffer)

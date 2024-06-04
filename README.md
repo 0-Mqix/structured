@@ -51,8 +51,9 @@ export default class Structured<const T extends readonly Property[]> {
     size: number;
     littleEndian: boolean;
     constructor(littleEndian: boolean, struct: T);
-    readBytes(bytes: Uint8Array, result: StructToObject<T>): void;
-    writeBytes(object: StructToObject<T>, bytes: Uint8Array): void;
+	// If the shape of the result object(s) are the same no new objects are created and all old ones are reused.
+    readBytes(bytes: Uint8Array, result: StructToObject<T>, view?: DataView, index?: number, littleEndian?: boolean): void;
+    writeBytes(value: StructToObject<T>, bytes: Uint8Array, index?: number, littleEndian?: boolean): void;
     toBytes(object: StructToObject<T>): Uint8Array;
     fromBytes(bytes: Uint8Array): StructToObject<T>;
 }
@@ -76,13 +77,30 @@ This libary also has predefined types for the structs.
 | double | number |
 | long | bigint |
 | bool | boolean |
+| string(*size*) | string |
+
+### Arrays
+
+### Union Types
 
 ### Custom Types
 If you need a custom type you can create your own. you just need to follow the interface below that all types are based on.
 ```ts
+/*
+StructuredType<T>
+
+This is the interface that all the types have.
+
+size is the fixed ammount of bytes the type consumes in the memory layout.
+
+Implement a fromBytes if you want to create an inmutable type.
+Else if you want to create mutable type you need to use the ReadBytes function
+You cant have both.
+*/
 export interface StructuredType<T> {
 	size: number
-	readBytes(bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): T
+	fromBytes?(bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): T
+	readBytes?(bytes: Uint8Array, result: T, view: DataView, index: number, littleEndian: boolean): void
 	writeBytes(value: T, bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): void
 }
 ```
