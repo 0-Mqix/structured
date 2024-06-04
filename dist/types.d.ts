@@ -13,5 +13,5 @@ export declare const double: StructuredType<number>;
 export declare const long: StructuredType<bigint>;
 export declare const bool: StructuredType<boolean>;
 export declare function string(size: number): StructuredType<string>;
-export declare function array<const T extends StructuredType<any> | Structured<any> | readonly Property[]>(size: number, type: T, omitEmptyOnRead?: boolean): StructuredType<InferOutputType<T>[]>;
+export declare function array<const T extends StructuredType<any> | Structured<any> | readonly Property[]>(size: number, type: T, omitEmptyRead?: boolean): StructuredType<InferOutputType<T>[]>;
 export declare function union<const T extends readonly Property[]>(union: T): StructuredType<Partial<InferOutputType<T>>>;

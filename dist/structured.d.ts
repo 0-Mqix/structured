@@ -1,6 +1,7 @@
 export interface StructuredType<T> {
     size: number;
-    readBytes(bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean, result?: T): T;
+    fromBytes?(bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): T;
+    readBytes?(bytes: Uint8Array, result: T, view: DataView, index: number, littleEndian: boolean): void;
     writeBytes(value: T, bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): void;
 }
 export type Property = readonly [string, StructuredType<any> | readonly Property[] | Structured<any>];
@@ -14,8 +15,8 @@ export default class Structured<const T extends readonly Property[]> {
     size: number;
     littleEndian: boolean;
     constructor(littleEndian: boolean, struct: T);
-    readBytes(bytes: Uint8Array, object: StructToObject<T>, index?: number, littleEndian?: boolean): void;
-    writeBytes(object: StructToObject<T>, bytes: Uint8Array, index?: number, littleEndian?: boolean): void;
+    readBytes(bytes: Uint8Array, result: StructToObject<T>, view?: DataView, index?: number, littleEndian?: boolean): void;
+    writeBytes(value: StructToObject<T>, bytes: Uint8Array, index?: number, littleEndian?: boolean): void;
     toBytes(object: StructToObject<T>): Uint8Array;
     fromBytes(bytes: Uint8Array): StructToObject<T>;
 }

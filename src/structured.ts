@@ -2,7 +2,8 @@ import { assert, loadPropertyMap, readBytes, writeBytes } from "./utils"
 
 export interface StructuredType<T> {
 	size: number
-	readBytes(bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean, result?: T): T
+	fromBytes?(bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): T
+	readBytes?(bytes: Uint8Array, result: T, view: DataView, index: number, littleEndian: boolean): void
 	writeBytes(value: T, bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): void
 }
 
@@ -29,19 +30,20 @@ export default class Structured<const T extends readonly Property[]> {
 
 	constructor(littleEndian: boolean, struct: T) {
 		this.littleEndian = littleEndian
-		const _size = {value: 0}
+		const _size = { value: 0 }
 		loadPropertyMap(this.map, struct, _size)
 		this.size = _size.value
 	}
 
-	readBytes(bytes: Uint8Array, object: StructToObject<T>, index = 0, littleEndian?: boolean) {
-		const view = new DataView(bytes.buffer)
-		readBytes(object, this.map, bytes, view, index, littleEndian ?? this.littleEndian)
+	readBytes(bytes: Uint8Array, result: StructToObject<T>, view?: DataView, index = 0, littleEndian?: boolean) {
+		assert(typeof result == "object", "result is undefined")
+		if (!view) view = new DataView(bytes.buffer)
+		readBytes(result, this.map, bytes, view, index, littleEndian ?? this.littleEndian)
 	}
 
-	writeBytes(object: StructToObject<T>, bytes: Uint8Array, index = 0, littleEndian?: boolean) {
-        const view = new DataView(bytes.buffer)
-		writeBytes(object, this.map, bytes, view, index, littleEndian ?? this.littleEndian)
+	writeBytes(value: StructToObject<T>, bytes: Uint8Array, index = 0, littleEndian?: boolean) {
+		const view = new DataView(bytes.buffer)
+		writeBytes(value, this.map, bytes, view, index, littleEndian ?? this.littleEndian)
 	}
 
 	toBytes(object: StructToObject<T>): Uint8Array {

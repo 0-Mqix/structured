@@ -5,7 +5,7 @@ export declare function assertStructuredType(name: string, index: number, type: 
 export declare function loadPropertyMap(map: PropertyMap, struct: readonly Property[], size: {
     value: number;
 }): void;
-export declare function readBytes(object: {
+export declare function readBytes(result: {
     [key: string]: any;
 }, map: PropertyMap, bytes: Uint8Array, view: DataView, index: number, littleEndian: boolean): number;
 export declare function writeBytes(object: {

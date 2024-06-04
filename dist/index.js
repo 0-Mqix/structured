@@ -18,11 +18,11 @@ function assertStructuredType(name, index, type) {
   assert(typeof name === "string", `property ${index} "name must be a string`);
   assert(typeof type === "object", `property ${index} type must be an object`);
   assert(typeof type.size === "number", `property ${index} type requires a size property`);
-  assert(typeof type.readBytes === "function", `property ${index} type requires a readByte function`);
-  assert(typeof type.writeBytes === "function", `property ${index} type requires a writeByte function`);
+  assert(type.readBytes != null != (type.fromBytes != null), `property ${index} type can only can have a readBytes or fromBytes function not both`);
+  assert(type.readBytes != null || type.fromBytes != null, `property ${index} type requires a readBytes or fromBytes function`);
 }
 function loadPropertyMap(map, struct, size) {
-  let i = 0;
+  let i2 = 0;
   for (const [name, type] of struct) {
     if (Array.isArray(type)) {
       const _map = new Map;
@@ -33,25 +33,35 @@ function loadPropertyMap(map, struct, size) {
       size.value += type.size;
     } else {
       const _type = type;
-      assertStructuredType(name, i, _type);
+      assertStructuredType(name, i2, _type);
       map.set(name, _type);
       size.value += _type.size;
     }
-    i++;
+    i2++;
   }
 }
-function readBytes(object, map, bytes, view, index, littleEndian2) {
+function readBytes(result, map, bytes, view, index, littleEndian2) {
+  console.log("result in", result);
   for (const [name, type] of map) {
     if (type instanceof Map) {
-      if (typeof object[name] != "object") {
-        object[name] = {};
+      if (typeof result[name] != "object") {
+        result[name] = {};
       }
-      index = readBytes(object[name], type, bytes, view, index, littleEndian2);
+      index = readBytes(result[name], type, bytes, view, index, littleEndian2);
     } else {
-      object[name] = type.readBytes(bytes, view, index, littleEndian2);
+      if (type.readBytes) {
+        if (typeof result[name] != "object") {
+          result[name] = type.array ? [] : {};
+        }
+        console.log(result[name]);
+        type.readBytes(bytes, result[name], view, index, littleEndian2);
+      } else {
+        result[name] = type.fromBytes(bytes, view, index, littleEndian2);
+      }
       index += type.size;
     }
   }
+  console.log("result out", result);
   return index;
 }
 function writeBytes(object, map, bytes, view, index, littleEndian2) {
@@ -78,13 +88,15 @@ class Structured {
     loadPropertyMap(this.map, struct, _size);
     this.size = _size.value;
   }
-  readBytes(bytes, object, index = 0, littleEndian2) {
-    const view = new DataView(bytes.buffer);
-    readBytes(object, this.map, bytes, view, index, littleEndian2 ?? this.littleEndian);
+  readBytes(bytes, result, view, index = 0, littleEndian2) {
+    assert(typeof result == "object", "result is undefined");
+    if (!view)
+      view = new DataView(bytes.buffer);
+    readBytes(result, this.map, bytes, view, index, littleEndian2 ?? this.littleEndian);
   }
-  writeBytes(object, bytes, index = 0, littleEndian2) {
+  writeBytes(value, bytes, index = 0, littleEndian2) {
     const view = new DataView(bytes.buffer);
-    writeBytes(object, this.map, bytes, view, index, littleEndian2 ?? this.littleEndian);
+    writeBytes(value, this.map, bytes, view, index, littleEndian2 ?? this.littleEndian);
   }
   toBytes(object) {
     const bytes = new Uint8Array(this.size);
@@ -101,7 +113,7 @@ class Structured {
 var createDataViewType = function(type, size) {
   return {
     size,
-    readBytes: (_, view, index, littleEndian2) => {
+    fromBytes: (_, view, index, littleEndian2) => {
       return view[`get${type}`](index, littleEndian2);
     },
     writeBytes: (value, _, view, index, littleEndian2) => {
@@ -113,10 +125,10 @@ function string(size) {
   const encoder = new TextEncoder;
   return {
     size,
-    readBytes: function(bytes, _, index) {
+    fromBytes: function(bytes, _, index) {
       let result = "";
-      for (let i = 0;i < size; i++) {
-        const byte = bytes[i + index];
+      for (let i2 = 0;i2 < size; i2++) {
+        const byte = bytes[i2 + index];
         if (byte == 0 || byte == undefined) {
           break;
         }
@@ -126,77 +138,78 @@ function string(size) {
     },
     writeBytes: function(value, bytes, _, index) {
       assert(value.length < size, "string is larger then expected");
-      let i = 0;
+      let i2 = 0;
       for (const byte of encoder.encode(value)) {
-        bytes[index + i] = byte;
-        i++;
+        bytes[index + i2] = byte;
+        i2++;
       }
     }
   };
 }
-function array(size, type, omitEmptyOnRead = false) {
+function array(size, type, omitEmptyRead = false) {
+  let _type = type;
   if (Array.isArray(type)) {
-    type = new Structured(littleEndian, type);
+    _type = new Structured(littleEndian, _type);
   }
-  if (type instanceof Structured) {
-    const struct = type;
-    return {
-      size: type.size * size,
-      readBytes: function(bytes, _, index, littleEndian2) {
-        const result = omitEmptyOnRead ? [] : Array(size);
-        for (let i = 0;i < size; i++) {
-          const offset = i * struct.size;
-          if (omitEmptyOnRead && emptyArrayElement(bytes, index + offset, struct.size)) {
+  let structured3 = _type instanceof Structured;
+  return {
+    array: true,
+    size: _type.size * size,
+    readBytes: function(bytes, result, view, index, littleEndian2) {
+      assert(Array.isArray(result), "result is not an array");
+      while (result.length > size) {
+        result.pop();
+      }
+      for (let i2 = 0;i2 < size; i2++) {
+        const offset = i2 * _type.size + index;
+        if (i2 > result.length - 1) {
+          if (omitEmptyRead && emptyArrayElement(bytes, offset, _type.size)) {
             continue;
           }
-          const element = {};
-          struct.readBytes(bytes, element, index + offset, littleEndian2);
-          omitEmptyOnRead ? result.push(element) : result[i] = element;
-        }
-        return result;
-      },
-      writeBytes: function(value, bytes, _, index, littleEndian2) {
-        assert(value.length <= size, "array is larger then expected");
-        for (let i = 0;i < size; i++) {
-          if (value[i] == undefined)
-            continue;
-          struct.writeBytes(value[i], bytes, i * struct.size + index, littleEndian2);
-        }
-      }
-    };
-  } else {
-    const _type = type;
-    return {
-      size: _type.size * size,
-      readBytes: function(bytes, view, index, littleEndian2) {
-        const result = omitEmptyOnRead ? [] : Array(size);
-        for (let i = 0;i < size; i++) {
-          const offset = i * _type.size;
-          if (omitEmptyOnRead && emptyArrayElement(bytes, index + offset, _type.size)) {
-            continue;
+          if (structured3 || _type.readBytes) {
+            const object = {};
+            _type.readBytes(bytes, object, view, offset, littleEndian2);
+            result.push(object);
+          } else {
+            result.push(_type.fromBytes(bytes, view, offset, littleEndian2));
           }
-          const element = _type.readBytes(bytes, view, index + offset, littleEndian2);
-          omitEmptyOnRead ? result.push(element) : result[i] = element;
+          continue;
         }
-        return result;
-      },
-      writeBytes: function(value, bytes, view, index, littleEndian2) {
-        assert(value.length <= size, "array is larger then expected");
-        for (let i = 0;i < size; i++) {
-          if (value[i] == undefined)
-            continue;
-          _type.writeBytes(value[i], bytes, view, i * _type.size + index, littleEndian2);
+        if (omitEmptyRead && emptyArrayElement(bytes, offset, _type.size)) {
+          result.splice(i2, 1);
+          continue;
+        }
+        if (structured3 || _type.readBytes) {
+          if (typeof result[i2] != "object")
+            result[i2] = type.array ? [] : {};
+          _type.readBytes(bytes, result[i2], view, offset, littleEndian2);
+        } else {
+          result[i2] = _type.fromBytes(bytes, view, offset, littleEndian2);
         }
       }
-    };
-  }
+      console.log("output", result);
+      console.log("----------------------------");
+    },
+    writeBytes: function(value, bytes, view, index, littleEndian2) {
+      assert(value.length <= size, "array is larger then expected");
+      for (let i2 = 0;i2 < size; i2++) {
+        if (value[i2] == undefined)
+          continue;
+        if (structured3) {
+          _type.writeBytes(value[i2], bytes, i2 * _type.size + index, littleEndian2);
+        } else {
+          _type.writeBytes(value[i2], bytes, view, i2 * _type.size + index, littleEndian2);
+        }
+      }
+    }
+  };
 }
 function union(union2) {
   const map = new Map;
   let size = 0;
   for (const [name, type] of union2) {
     const _size = { value: 0 };
-    let i = 0;
+    let i2 = 0;
     if (Array.isArray(type)) {
       const _map = new Map;
       loadPropertyMap(_map, type, _size);
@@ -206,28 +219,34 @@ function union(union2) {
       _size.value = type.size;
     } else {
       const _type = type;
-      assertStructuredType(name, i, _type);
+      assertStructuredType(name, i2, _type);
       map.set(name, _type);
       _size.value = _type.size;
     }
     if (_size.value > size) {
       size = _size.value;
     }
-    i++;
+    i2++;
   }
   return {
     size,
-    readBytes: function(bytes, view, index, littleEndian2) {
-      const result = {};
+    readBytes: function(bytes, result, view, index, littleEndian2) {
+      assert(typeof result == "object", "result is not an object");
       for (const [name, type] of map) {
         if (type instanceof Map) {
-          result[name] = {};
+          if (typeof result[name] != "object")
+            result[name] = {};
           readBytes(result[name], type, bytes, view, index, littleEndian2);
         } else {
-          result[name] = type.readBytes(bytes, view, index, littleEndian2);
+          if (type.readBytes) {
+            if (typeof result[name] != "object")
+              result[i] = type.array ? [] : {};
+            type.readBytes(bytes, result[name], view, index, littleEndian2);
+          } else {
+            result[name] = type.fromBytes(bytes, view, index, littleEndian2);
+          }
         }
       }
-      return result;
     },
     writeBytes: function(value, bytes, view, index, littleEndian2) {
       let done = false;
@@ -259,7 +278,7 @@ var double = float64;
 var long = int64;
 var bool = {
   size: 1,
-  readBytes: function(bytes, _, index) {
+  fromBytes: function(bytes, _, index) {
     return bytes[index] ? true : false;
   },
   writeBytes: function(value, bytes, _, index) {

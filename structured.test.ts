@@ -1,14 +1,5 @@
 import { expect, test } from "bun:test"
-import Structured, {
-	array,
-	bool,
-	int32,
-	string,
-	uint16,
-	uint32,
-	uint8,
-	union
-} from "./src"
+import Structured, { array, bool, int32, string, uint16, uint32, uint8, union } from "./src"
 
 test("simple", () => {
 	var a = new Structured(true, [["key", string(4)]])
@@ -25,7 +16,7 @@ test("simple", () => {
 			]
 		],
 		["test", bool],
-		["d", array(2, a, true)]
+		["d", array(2, a)]
 	])
 
 	const input = {
@@ -41,7 +32,7 @@ test("simple", () => {
 			}
 		},
 		test: true,
-		d: [{ key: "F" }, { key: "F" }]
+		d: [{ key: "F" }, { key: "A" }]
 	}
 
 	const bytes = b.toBytes(input)
@@ -52,7 +43,7 @@ test("simple", () => {
 test("union", () => {
 	var a = new Structured(false, [
 		["key", string(4)],
-		["numbers", array(10, int32, false)]
+		["numbers", array(10, int32)]
 	])
 
 	const b = new Structured(false, [
@@ -66,7 +57,53 @@ test("union", () => {
 		]
 	])
 
-	const bytes = b.toBytes({ test: { a: { key: "max", numbers: [32, 35, 544, 78] } } })
+	const value = { key: "max", numbers: [32, 35, 544, 78]}
+	const bytes = b.toBytes({ test: { a: value } })
 	const output = b.fromBytes(bytes)
-	console.log(output)
+	
+	expect(output.test.a).toStrictEqual(value)
+})
+
+test("reuse", () => {
+	var a = new Structured(false, [
+		["key", string(4)],
+	])
+
+	const b = new Structured(false, [
+		["test", a],
+		["numbers", array(10, uint16)],
+		["age", int32],
+		["keys", array(5, a)]
+	])
+	
+	const input = {test: {key: "F1"}, numbers:[1, 33, 44, 11], age: 20, keys: [{key: "A"}, {key: "B"}, {key: "C"}]}
+	const output1 = {test: {key: ""}, numbers:[0, 0, 0, 0, 5, 6, 7, 8]}
+
+	const bytes = b.toBytes(input)
+	//@ts-ignore
+	b.readBytes(bytes, output1)
+	const output2 = b.fromBytes(bytes)
+
+	expect(output1).toStrictEqual(input)
+	//@ts-ignore
+	expect(output2).toStrictEqual(output1)
+
+})
+
+
+test("omitEmtpyRead", () => {
+
+	const b = new Structured(false, [
+		["numbers", array(10, uint16, false)],
+	])
+	
+	const input = {numbers:[1, 0, 44, 11, 0, 50]}
+	const bytes = b.toBytes(input)
+
+	const output1 = {numbers:[0, 0, 0, 0, 5, 6, 7, 8]}
+	b.readBytes(bytes, output1)
+	const output2 = b.fromBytes(bytes)
+
+	console.log(output1.numbers)
+	console.log(output2.numbers)
 })
