@@ -58,8 +58,8 @@ export default class Structured<const T extends readonly Property[]> {
 		readBytes(result, this.properties, bytes, view, index, littleEndian ?? this.littleEndian)
 	}
 
-	writeBytes(value: StructToObject<T>, bytes: Uint8Array, index = 0, littleEndian?: boolean) {
-		const view = new DataView(bytes.buffer)
+	writeBytes(value: StructToObject<T>, bytes: Uint8Array, view?: DataView, index = 0, littleEndian?: boolean) {
+		if (!view) view = new DataView(bytes.buffer)
 		writeBytes(value, this.properties, bytes, view, index, littleEndian ?? this.littleEndian)
 	}
 

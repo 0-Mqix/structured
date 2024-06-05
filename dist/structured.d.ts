@@ -27,7 +27,7 @@ export default class Structured<const T extends readonly Property[]> {
     littleEndian: boolean;
     constructor(littleEndian: boolean, struct: T);
     readBytes(bytes: Uint8Array, result: StructToObject<T>, view?: DataView, index?: number, littleEndian?: boolean): void;
-    writeBytes(value: StructToObject<T>, bytes: Uint8Array, index?: number, littleEndian?: boolean): void;
+    writeBytes(value: StructToObject<T>, bytes: Uint8Array, view?: DataView, index?: number, littleEndian?: boolean): void;
     toBytes(object: StructToObject<T>): Uint8Array;
     fromBytes(bytes: Uint8Array): StructToObject<T>;
 }

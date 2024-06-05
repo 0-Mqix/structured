@@ -37,22 +37,21 @@ export function assertStructuredType(name: string, index: number, type: Structur
 export function loadProperties(properties: Properties, struct: readonly Property[], size: { value: number }) {
 	let i = 0
 	for (const [name, type] of struct) {
+		
 		if (type instanceof Array) {
-			const _properties: Properties = []	
+			const _properties: Properties = []
 			loadProperties(_properties, type, size)
 			properties.push([name, _properties])
-		
 		} else if (type instanceof Structured) {
 			properties.push([name, Array.from(type.properties)])
 			size.value += type.size
-		
 		} else {
 			const _type = type as StructuredType<any>
 			assertStructuredType(name, i, _type)
 			properties.push([name, _type])
 			size.value += _type.size
 		}
-		
+
 		i++
 	}
 }
@@ -65,13 +64,15 @@ export function readBytes(
 	index: number,
 	littleEndian: boolean
 ): number {
-	for (const [name, type] of properties) {
+	for (let i = 0; i < properties.length; i++) {
+		const name = properties[i][0]
+		const type = properties[i][1]
+
 		if (type instanceof Array) {
 			if (typeof result[name] != "object") {
 				result[name] = {}
 			}
 			index = readBytes(result[name], type, bytes, view, index, littleEndian)
-		
 		} else {
 			if (type.readBytes) {
 				if (typeof result[name] != "object") {
@@ -98,11 +99,14 @@ export function writeBytes(
 	index: number,
 	littleEndian: boolean
 ): number {
-	for (const [name, type] of properties) {
+	for (let i = 0; i < properties.length; i++) {
+		const name = properties[i][0]
+		const type = properties[i][1]
+
 		if (type instanceof Array) {
 			index = writeBytes(object[name], type, bytes, view, index, littleEndian)
 		} else {
-			assert(Object.hasOwn(object, name), "object has not the property")
+			assert(Object.hasOwn(object, name), "object does not have the property")
 			type.writeBytes(object[name], bytes, view, index, littleEndian)
 			index += type.size
 		}

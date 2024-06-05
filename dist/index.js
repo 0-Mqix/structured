@@ -22,7 +22,7 @@ function assertStructuredType(name, index, type) {
   assert(type.readBytes == undefined || type.fromBytes == undefined, `property ${index}:${name} type requires a readBytes or fromBytes function`);
 }
 function loadProperties(properties, struct, size) {
-  let i2 = 0;
+  let i = 0;
   for (const [name, type] of struct) {
     if (type instanceof Array) {
       const _properties = [];
@@ -33,15 +33,17 @@ function loadProperties(properties, struct, size) {
       size.value += type.size;
     } else {
       const _type = type;
-      assertStructuredType(name, i2, _type);
+      assertStructuredType(name, i, _type);
       properties.push([name, _type]);
       size.value += _type.size;
     }
-    i2++;
+    i++;
   }
 }
 function readBytes(result, properties, bytes, view, index, littleEndian) {
-  for (const [name, type] of properties) {
+  for (let i = 0;i < properties.length; i++) {
+    const name = properties[i][0];
+    const type = properties[i][1];
     if (type instanceof Array) {
       if (typeof result[name] != "object") {
         result[name] = {};
@@ -62,11 +64,13 @@ function readBytes(result, properties, bytes, view, index, littleEndian) {
   return index;
 }
 function writeBytes(object, properties, bytes, view, index, littleEndian) {
-  for (const [name, type] of properties) {
+  for (let i = 0;i < properties.length; i++) {
+    const name = properties[i][0];
+    const type = properties[i][1];
     if (type instanceof Array) {
       index = writeBytes(object[name], type, bytes, view, index, littleEndian);
     } else {
-      assert(Object.hasOwn(object, name), "object has not the property");
+      assert(Object.hasOwn(object, name), "object does not have the property");
       type.writeBytes(object[name], bytes, view, index, littleEndian);
       index += type.size;
     }
@@ -91,8 +95,9 @@ class Structured {
       view = new DataView(bytes.buffer);
     readBytes(result, this.properties, bytes, view, index, littleEndian ?? this.littleEndian);
   }
-  writeBytes(value, bytes, index = 0, littleEndian) {
-    const view = new DataView(bytes.buffer);
+  writeBytes(value, bytes, view, index = 0, littleEndian) {
+    if (!view)
+      view = new DataView(bytes.buffer);
     writeBytes(value, this.properties, bytes, view, index, littleEndian ?? this.littleEndian);
   }
   toBytes(object) {
@@ -124,8 +129,8 @@ function string(size) {
     size,
     fromBytes: function(bytes, _, index) {
       let result = "";
-      for (let i2 = 0;i2 < size; i2++) {
-        const byte = bytes[i2 + index];
+      for (let i = 0;i < size; i++) {
+        const byte = bytes[i + index];
         if (byte == 0 || byte == undefined) {
           break;
         }
@@ -135,10 +140,10 @@ function string(size) {
     },
     writeBytes: function(value, bytes, _, index) {
       assert(value.length < size, "string is larger then expected");
-      let i2 = 0;
+      let i = 0;
       for (const byte of encoder.encode(value)) {
-        bytes[index + i2] = byte;
-        i2++;
+        bytes[index + i] = byte;
+        i++;
       }
     }
   };
@@ -159,9 +164,9 @@ function array(size, type, omitEmptyRead = false) {
       while (result.length > size) {
         result.pop();
       }
-      for (let i2 = 0;i2 < size; i2++) {
-        const offset = i2 * _type.size + index;
-        if (i2 > result.length - 1) {
+      for (let i = 0;i < size; i++) {
+        const offset = i * _type.size + index;
+        if (i > result.length - 1) {
           if (omitEmptyRead && emptyArrayElement(bytes, offset, _type.size)) {
             continue;
           }
@@ -175,28 +180,28 @@ function array(size, type, omitEmptyRead = false) {
           continue;
         }
         if (omitEmptyRead && emptyArrayElement(bytes, offset, _type.size)) {
-          result.splice(i2, 1);
-          i2--;
+          result.splice(i, 1);
+          i--;
           continue;
         }
         if (structured3 || _type.readBytes) {
-          if (typeof result[i2] != "object")
-            result[i2] = type.array ? [] : {};
-          _type.readBytes(bytes, result[i2], view, offset, littleEndian);
+          if (typeof result[i] != "object")
+            result[i] = type.array ? [] : {};
+          _type.readBytes(bytes, result[i], view, offset, littleEndian);
         } else {
-          result[i2] = _type.fromBytes(bytes, view, offset, littleEndian);
+          result[i] = _type.fromBytes(bytes, view, offset, littleEndian);
         }
       }
     },
     writeBytes: function(value, bytes, view, index, littleEndian) {
       assert(value.length <= size, "array is larger then expected");
-      for (let i2 = 0;i2 < size; i2++) {
-        if (value[i2] == undefined)
+      for (let i = 0;i < size; i++) {
+        if (value[i] == undefined)
           continue;
         if (structured3) {
-          _type.writeBytes(value[i2], bytes, i2 * _type.size + index, littleEndian);
+          _type.writeBytes(value[i], bytes, i * _type.size + index, littleEndian);
         } else {
-          _type.writeBytes(value[i2], bytes, view, i2 * _type.size + index, littleEndian);
+          _type.writeBytes(value[i], bytes, view, i * _type.size + index, littleEndian);
         }
       }
     }
@@ -208,7 +213,7 @@ function union(union2) {
   let size = 0;
   for (const [name, type] of union2) {
     const _size = { value: 0 };
-    let i2 = 0;
+    let i = 0;
     if (type instanceof Array) {
       const _properties = [];
       loadProperties(_properties, type, _size);
@@ -218,20 +223,22 @@ function union(union2) {
       _size.value = type.size;
     } else {
       const _type = type;
-      assertStructuredType(name, i2, _type);
+      assertStructuredType(name, i, _type);
       properties.push([name, _type]);
       _size.value = _type.size;
     }
     if (_size.value > size) {
       size = _size.value;
     }
-    i2++;
+    i++;
   }
   return {
     size,
     readBytes: function(bytes, result, view, index, littleEndian) {
       assert(typeof result == "object", "result is not an object");
-      for (const [name, type] of properties) {
+      for (let i = 0;i < properties.length; i++) {
+        const name = properties[i][0];
+        const type = properties[i][1];
         if (type instanceof Array) {
           if (typeof result[name] != "object")
             result[name] = {};
@@ -249,15 +256,17 @@ function union(union2) {
     },
     writeBytes: function(value, bytes, view, index, littleEndian) {
       let done = false;
-      for (const [_name, type] of properties) {
-        if (!Object.hasOwn(value, _name))
+      for (let i = 0;i < properties.length; i++) {
+        const name = properties[i][0];
+        const type = properties[i][1];
+        if (!(name in value))
           continue;
         assert(!done, "union has multiple properties defined");
         done = true;
         if (type instanceof Array) {
-          writeBytes(value[_name], type, bytes, view, index, littleEndian);
+          writeBytes(value[name], type, bytes, view, index, littleEndian);
         } else {
-          type.writeBytes(value[_name], bytes, view, index, littleEndian);
+          type.writeBytes(value[name], bytes, view, index, littleEndian);
         }
       }
     }

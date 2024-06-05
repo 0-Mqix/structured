@@ -2,7 +2,7 @@ import Structured, { type Property, type StructuredType, type InferOutputType, t
 import { loadProperties, assertStructuredType, assert, readBytes, writeBytes } from "./utils"
 
 export function union<const T extends readonly Property[]>(union: T): StructuredType<Partial<InferOutputType<T>>> {
-	const properties: Properties = [] 
+	const properties: Properties = []
 	let size = 0
 
 	for (const [name, type] of union) {
@@ -10,15 +10,13 @@ export function union<const T extends readonly Property[]>(union: T): Structured
 		let i = 0
 
 		if (type instanceof Array) {
-			const _properties: Properties = []	
+			const _properties: Properties = []
 			loadProperties(_properties, type, _size)
 			properties.push([name, _properties])
-        
 		} else if (type instanceof Structured) {
 			properties.push([name, Array.from(type.properties)])
 			_size.value = type.size
-		
-        } else {
+		} else {
 			const _type = type as StructuredType<any>
 			assertStructuredType(name, i, _type)
 			properties.push([name, _type])
@@ -43,18 +41,20 @@ export function union<const T extends readonly Property[]>(union: T): Structured
 		): void {
 			assert(typeof result == "object", "result is not an object")
 
-			for (const [name, type] of properties) {
-
+			for (let i = 0; i < properties.length; i++) {
+				const name = properties[i][0]
+				const type = properties[i][1]
+			
 				if (type instanceof Array) {
 					//@ts-ignore
 					if (typeof result[name] != "object") result[name] = {}
 					readBytes(result[name], type, bytes, view, index, littleEndian)
-                } else {
+				} else {
 					if (type.readBytes) {
 						// @ts-ignore
 						if (typeof result[name] != "object") result[i] = type.array ? [] : {}
 						type.readBytes(bytes, result[name], view, index, littleEndian)
-                    } else {
+					} else {
 						// @ts-ignore
 						result[name] = type.fromBytes(bytes, view, index, littleEndian)
 					}
@@ -69,15 +69,20 @@ export function union<const T extends readonly Property[]>(union: T): Structured
 			littleEndian
 		) {
 			let done = false
-			for (const [_name, type] of properties) {
-				if (!Object.hasOwn(value, _name)) continue
+			for (let i = 0; i < properties.length; i++) {
+				
+				const name = properties[i][0]
+				const type = properties[i][1]
+				
+				if (!(name in value)) continue
 				assert(!done, "union has multiple properties defined")
+				
 				done = true
-                if (type instanceof Array) {
+				if (type instanceof Array) {
 					// @ts-ignore
-					writeBytes(value[_name], type, bytes, view, index, littleEndian)
-                } else {
-					type.writeBytes(value[_name], bytes, view, index, littleEndian)
+					writeBytes(value[name], type, bytes, view, index, littleEndian)
+				} else {
+					type.writeBytes(value[name], bytes, view, index, littleEndian)
 				}
 			}
 		}
