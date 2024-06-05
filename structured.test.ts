@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test"
-import Structured, { array, bool, int32, long, string as string, uint16, uint32, uint8, union } from "./src"
+import Structured, { array, bool, int16, int32, long, string as string, uint16, uint32, uint8, union } from "./src"
 import { idText } from "typescript"
-import { heapStats } from "bun:jsc";
-import { sleep } from "bun";
+import { heapStats } from "bun:jsc"
+import { sleep } from "bun"
 
 // test("simple", () => {
 // 	var a = new Structured(true, [["key", string_x(4)]])
@@ -109,48 +109,60 @@ import { sleep } from "bun";
 // 	expect(output2).toStrictEqual(output1)
 // })
 
-var a = new Structured(true, [["key", array(10, string(10), false)]])
+// var a = new Structured(true, [["key", array(10, string(10), false)]])
+
+test("string", () => {
+	var struct = new Structured(true, [["name", string(4)]])
+
+	const input = { name: "max" }
+
+	const output = struct.fromBytes(struct.toBytes(input))
+	expect(output).toStrictEqual(input)
+})
+
 
 var b = new Structured(true, [
 	["name", string(4)],
-	["count", int32],
-	["a", a],
+	["a", int32],
+	["b", int32],
+	["c", array(5, int16)]
 ])
 
 const input = {
 	name: "max",
-	count: 0,
-	a: {"key": ["max", "van", "moorsel"]}
+	a: 0,
+	b: 1,
+	c: [1, 2, 3, 4, 5]
+	// a: {"key": ["max", "van", "moorsel"]}
 }
 
-const LOOPS = 100_000
+const LOOPS = 1_000_000
 
 test("stcutured", () => {
 	const object = structuredClone(input)
-	const bytes = new Uint8Array(b.size) 
-	const view = new DataView(bytes.buffer) 
+	const bytes = new Uint8Array(b.size)
+	const view = new DataView(bytes.buffer)
 	const start = Bun.nanoseconds()
-	
+
 	for (let i = 0; i < LOOPS; i++) {
 		b.writeBytes(object, bytes, view)
-		object.count++
+		object.a++
+		object.b += 2
 		b.readBytes(bytes, object, view)
 	}
-	
-	console.log(Bun.nanoseconds() - start)	
-	console.log(heapStats());
+
+	console.log(Bun.nanoseconds() - start)
 })
 
-// test("json", () => {
-// 	const object = structuredClone(input)
-// 	const start = Bun.nanoseconds()
-// 	for (let i = 0; i < LOOPS; i++) {
-// 		const output = JSON.stringify(object)
-// 		object.count++;
-// 		//@ts-ignore
-// 		JSON.parse(output, object)
-// 	}
-// 	console.log(Bun.nanoseconds() - start)	
-// })
-
-
+test("json", () => {
+	const object = structuredClone(input)
+	const start = Bun.nanoseconds()
+	for (let i = 0; i < LOOPS; i++) {
+		const output = JSON.stringify(object)
+		object.a++
+		object.b += 2
+		//@ts-ignore
+		JSON.parse(output, object)
+	}
+	console.log(Bun.nanoseconds() - start)
+})

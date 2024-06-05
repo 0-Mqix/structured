@@ -27,8 +27,6 @@ export const bool: StructuredType<boolean> = {
 }
 
 export function string(size: number): StructuredType<string> {
-	const encoder = new TextEncoder()
-
 	return {
 		size: size,
 		fromBytes: function (bytes: Uint8Array, _: DataView, index: number): string {
@@ -41,15 +39,18 @@ export function string(size: number): StructuredType<string> {
 				}
 				result += String.fromCharCode(byte)
 			}
-
+		
 			return result
 		},
 		writeBytes: function (value: string, bytes: Uint8Array, _: DataView, index: number) {
 			assert(value.length < size, "string is larger then expected")
-			let i = 0
-			for (const byte of encoder.encode(value)) {
-				bytes[index + i] = byte
-				i++
+
+			for (let i = 0; i < size; i++) {
+				if (i < value.length) {
+					bytes[index + i] = value.charCodeAt(i)
+					continue
+				}
+				bytes[index + i] = 0
 			}
 		}
 	}
