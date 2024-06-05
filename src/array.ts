@@ -36,6 +36,7 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 				const offset = i * _type.size + index
 
 				if (i > result.length - 1) {
+					
 					if (omitEmptyRead && emptyArrayElement(bytes, offset, _type.size)) {
 						continue
 					}
@@ -80,16 +81,9 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 			littleEndian
 		): void {
 			assert(value.length <= size, "array is larger then expected")
-			for (let i = 0; i < size; i++) {
+			for (let i = 0; i < value.length; i++) {
 				if (value[i] == undefined) continue
-
-				if (structured) {
-					//@ts-ignore
-					_type.writeBytes(value[i], bytes, i * _type.size + index, littleEndian)
-				} else {
-					//@ts-ignore
-					_type.writeBytes(value[i], bytes, view, i * _type.size + index, littleEndian)
-				}
+				_type.writeBytes(value[i], bytes, view, i * _type.size + index, littleEndian)
 			}
 		}
 	}

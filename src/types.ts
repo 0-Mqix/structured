@@ -1,20 +1,66 @@
 import { type StructuredType } from "./structured"
 import { assert } from "./utils"
 
-function createDataViewType<T extends number | bigint>(type: string, size: number): StructuredType<T> {
-	return {
-		//@ts-ignore
-		size,
-		fromBytes: (_: Uint8Array, view: DataView, index: number, littleEndian: boolean): T => {
-			//@ts-ignore
-			return view[`get${type}`](index, littleEndian)
-		},
-		writeBytes: (value: T, _: Uint8Array, view: DataView, index: number, littleEndian: boolean): void => {
-			//@ts-ignore
-			view[`set${type}`](index, value, littleEndian)
-		}
-	}
-}
+export const uint8: StructuredType<number> = {
+  size: 1,
+  fromBytes: (_, view, index, littleEndian) => view.getUint8(index),
+  writeBytes: (value, _, view, index, littleEndian) => view.setUint8(index, value),
+};
+
+export const int8: StructuredType<number> = {
+  size: 1,
+  fromBytes: (_, view, index, littleEndian) => view.getInt8(index),
+  writeBytes: (value, _, view, index, littleEndian) => view.setInt8(index, value),
+};
+
+export const uint16: StructuredType<number> = {
+  size: 2,
+  fromBytes: (_, view, index, littleEndian) => view.getUint16(index, littleEndian),
+  writeBytes: (value, _, view, index, littleEndian) => view.setUint16(index, value, littleEndian),
+};
+
+export const int16: StructuredType<number> = {
+  size: 2,
+  fromBytes: (_, view, index, littleEndian) => view.getInt16(index, littleEndian),
+  writeBytes: (value, _, view, index, littleEndian) => view.setInt16(index, value, littleEndian),
+};
+
+export const uint32: StructuredType<number> = {
+  size: 4,
+  fromBytes: (_, view, index, littleEndian) => view.getUint32(index, littleEndian),
+  writeBytes: (value, _, view, index, littleEndian) => view.setUint32(index, value, littleEndian),
+};
+
+export const int32: StructuredType<number> = {
+  size: 4,
+  fromBytes: (_, view, index, littleEndian) => view.getInt32(index, littleEndian),
+  writeBytes: (value, _, view, index, littleEndian) => view.setInt32(index, value, littleEndian),
+};
+
+export const float32: StructuredType<number> = {
+  size: 4,
+  fromBytes: (_, view, index, littleEndian) => view.getFloat32(index, littleEndian),
+  writeBytes: (value, _, view, index, littleEndian) => view.setFloat32(index, value, littleEndian),
+};
+
+export const float64: StructuredType<number> = {
+  size: 8,
+  fromBytes: (_, view, index, littleEndian) => view.getFloat64(index, littleEndian),
+  writeBytes: (value, _, view, index, littleEndian) => view.setFloat64(index, value, littleEndian),
+};
+
+export const int64: StructuredType<bigint> = {
+  size: 8,
+  fromBytes: (_, view, index, littleEndian) => view.getBigInt64(index, littleEndian),
+  writeBytes: (value, _, view, index, littleEndian) => view.setBigInt64(index, value, littleEndian),
+};
+
+export const uint64: StructuredType<bigint> = {
+  size: 8,
+  fromBytes: (_, view, index, littleEndian) => view.getBigUint64(index, littleEndian),
+  writeBytes: (value, _, view, index, littleEndian) => view.setBigUint64(index, value, littleEndian),
+};
+
 
 export const bool: StructuredType<boolean> = {
 	size: 1,
@@ -34,12 +80,15 @@ export function string(size: number): StructuredType<string> {
 
 			for (let i = 0; i < size; i++) {
 				const byte = bytes[i + index]
+				
 				if (byte == 0 || byte == undefined) {
 					break
 				}
+
 				result += String.fromCharCode(byte)
 			}
-		
+	
+			
 			return result
 		},
 		writeBytes: function (value: string, bytes: Uint8Array, _: DataView, index: number) {
@@ -50,29 +99,15 @@ export function string(size: number): StructuredType<string> {
 					bytes[index + i] = value.charCodeAt(i)
 					continue
 				}
+				
 				bytes[index + i] = 0
 			}
 		}
 	}
 }
 
-export const uint8 = createDataViewType<number>("Uint8", 1)
-export const int8 = createDataViewType<number>("Int8", 1)
-
-export const uint16 = createDataViewType<number>("Uint16", 2)
-export const int16 = createDataViewType<number>("Int16", 2)
-
-export const uint32 = createDataViewType<number>("Uint32", 4)
-export const int32 = createDataViewType<number>("Int32", 4)
-
-export const float32 = createDataViewType<number>("Float32", 4)
-export const float64 = createDataViewType<number>("Float64", 8)
-
-export const int64 = createDataViewType<bigint>("BigInt64", 8)
-export const uint64 = createDataViewType<bigint>("BigUint64", 8)
-
-export const double = float64
-export const long = int64
+export const double = float64;
+export const long = int64;
 
 export * from "./array"
 export * from "./union"

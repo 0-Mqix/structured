@@ -70,7 +70,6 @@ export function union<const T extends readonly Property[]>(union: T): Structured
 		) {
 			let done = false
 			for (let i = 0; i < properties.length; i++) {
-				
 				const name = properties[i][0]
 				const type = properties[i][1]
 				

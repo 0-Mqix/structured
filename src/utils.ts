@@ -84,6 +84,7 @@ export function readBytes(
 				// @ts-ignore
 				result[name] = type.fromBytes(bytes, view, index, littleEndian)
 			}
+			
 			index += type.size
 		}
 	}
@@ -106,7 +107,7 @@ export function writeBytes(
 		if (type instanceof Array) {
 			index = writeBytes(object[name], type, bytes, view, index, littleEndian)
 		} else {
-			assert(Object.hasOwn(object, name), "object does not have the property")
+			assert(name in object, "object does not have the property")
 			type.writeBytes(object[name], bytes, view, index, littleEndian)
 			index += type.size
 		}
