@@ -147,7 +147,7 @@ function string(size) {
 // src/array.ts
 function array(size, type, omitEmptyRead = false) {
   let _type = type;
-  if (Array.isArray(type)) {
+  if (type instanceof Array) {
     _type = new Structured(true, _type);
   }
   const structured3 = _type instanceof Structured;
@@ -155,7 +155,7 @@ function array(size, type, omitEmptyRead = false) {
     array: true,
     size: _type.size * size,
     readBytes: function(bytes, result, view, index, littleEndian) {
-      assert(Array.isArray(result), "result is not an array");
+      assert(result instanceof Array, "result is not an array");
       while (result.length > size) {
         result.pop();
       }
@@ -166,7 +166,7 @@ function array(size, type, omitEmptyRead = false) {
             continue;
           }
           if (structured3 || _type.readBytes) {
-            const object = {};
+            const object = _type.array ? [] : {};
             _type.readBytes(bytes, object, view, offset, littleEndian);
             result.push(object);
           } else {
