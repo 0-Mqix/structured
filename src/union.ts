@@ -1,27 +1,27 @@
-import Structured, { type Property, type StructuredType, type InferOutputType, type PropertyMap } from "./structured"
-import { loadPropertyMap, assertStructuredType, assert, readBytes, writeBytes } from "./utils"
+import Structured, { type Property, type StructuredType, type InferOutputType, type Properties } from "./structured"
+import { loadProperties, assertStructuredType, assert, readBytes, writeBytes } from "./utils"
 
 export function union<const T extends readonly Property[]>(union: T): StructuredType<Partial<InferOutputType<T>>> {
-	const map: PropertyMap = new Map()
+	const properties: Properties = [] 
 	let size = 0
 
 	for (const [name, type] of union) {
 		const _size = { value: 0 }
 		let i = 0
 
-		if (Array.isArray(type)) {
-			const _map = new Map()
-			loadPropertyMap(_map, type, _size)
-			map.set(name, _map)
-		
-        } else if (type instanceof Structured) {
-			map.set(name, new Map(type.map))
+		if (type instanceof Array) {
+			const _properties: Properties = []	
+			loadProperties(_properties, type, _size)
+			properties.push([name, _properties])
+        
+		} else if (type instanceof Structured) {
+			properties.push([name, Array.from(type.properties)])
 			_size.value = type.size
 		
         } else {
 			const _type = type as StructuredType<any>
 			assertStructuredType(name, i, _type)
-			map.set(name, _type)
+			properties.push([name, _type])
 			_size.value = _type.size
 		}
 
@@ -43,9 +43,9 @@ export function union<const T extends readonly Property[]>(union: T): Structured
 		): void {
 			assert(typeof result == "object", "result is not an object")
 
-			for (const [name, type] of map) {
+			for (const [name, type] of properties) {
 
-				if (type instanceof Map) {
+				if (type instanceof Array) {
 					//@ts-ignore
 					if (typeof result[name] != "object") result[name] = {}
 					readBytes(result[name], type, bytes, view, index, littleEndian)
@@ -69,11 +69,11 @@ export function union<const T extends readonly Property[]>(union: T): Structured
 			littleEndian
 		) {
 			let done = false
-			for (const [_name, type] of map) {
+			for (const [_name, type] of properties) {
 				if (!Object.hasOwn(value, _name)) continue
 				assert(!done, "union has multiple properties defined")
 				done = true
-                if (type instanceof Map) {
+                if (type instanceof Array) {
 					// @ts-ignore
 					writeBytes(value[_name], type, bytes, view, index, littleEndian)
                 } else {

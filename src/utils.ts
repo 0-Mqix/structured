@@ -1,4 +1,4 @@
-import type { Property, PropertyMap, StructuredType } from "./structured"
+import type { Property, Properties, StructuredType } from "./structured"
 import Structured from "./structured"
 
 export function assert(value: boolean, message?: string) {
@@ -34,22 +34,22 @@ export function assertStructuredType(name: string, index: number, type: Structur
 	)
 }
 
-export function loadPropertyMap(map: PropertyMap, struct: readonly Property[], size: { value: number }) {
+export function loadProperties(properties: Properties, struct: readonly Property[], size: { value: number }) {
 	let i = 0
 	for (const [name, type] of struct) {
-		if (Array.isArray(type)) {
-			const _map = new Map()
-			loadPropertyMap(_map, type, size)
-			map.set(name, _map)
+		if (type instanceof Array) {
+			const _properties: Properties = []	
+			loadProperties(_properties, type, size)
+			properties.push([name, _properties])
 		
 		} else if (type instanceof Structured) {
-			map.set(name, new Map(type.map))
+			properties.push([name, Array.from(type.properties)])
 			size.value += type.size
 		
 		} else {
 			const _type = type as StructuredType<any>
 			assertStructuredType(name, i, _type)
-			map.set(name, _type)
+			properties.push([name, _type])
 			size.value += _type.size
 		}
 		
@@ -59,14 +59,14 @@ export function loadPropertyMap(map: PropertyMap, struct: readonly Property[], s
 
 export function readBytes(
 	result: { [key: string]: any },
-	map: PropertyMap,
+	properties: Properties,
 	bytes: Uint8Array,
 	view: DataView,
 	index: number,
 	littleEndian: boolean
 ): number {
-	for (const [name, type] of map) {
-		if (type instanceof Map) {
+	for (const [name, type] of properties) {
+		if (type instanceof Array) {
 			if (typeof result[name] != "object") {
 				result[name] = {}
 			}
@@ -92,14 +92,14 @@ export function readBytes(
 
 export function writeBytes(
 	object: { [key: string]: any },
-	map: PropertyMap,
+	properties: Properties,
 	bytes: Uint8Array,
 	view: DataView,
 	index: number,
 	littleEndian: boolean
 ): number {
-	for (const [name, type] of map) {
-		if (type instanceof Map) {
+	for (const [name, type] of properties) {
+		if (type instanceof Array) {
 			index = writeBytes(object[name], type, bytes, view, index, littleEndian)
 		} else {
 			assert(Object.hasOwn(object, name), "object has not the property")
