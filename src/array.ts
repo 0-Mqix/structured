@@ -8,7 +8,7 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 ): StructuredType<InferOutputType<T>[]> {
 	let _type = type as StructuredType<any> | Structured<any>
 
-	if (Array.isArray(type)) {
+	if (type instanceof Array) {
 		//@ts-ignore
 		_type = new Structured(true, _type)
 	}
@@ -26,7 +26,7 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 			index: number,
 			littleEndian
 		): void {
-			assert(Array.isArray(result), "result is not an array")
+			assert(result instanceof Array, "result is not an array")
 
 			while (result.length > size) {
 				result.pop()
@@ -41,7 +41,8 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 					}
 
 					if (structured || _type.readBytes) {
-						const object = {}
+						//@ts-ignore
+						const object = _type.array ? [] : {}
 						//@ts-ignore
 						_type.readBytes(bytes, object, view, offset, littleEndian)
 						//@ts-ignore
