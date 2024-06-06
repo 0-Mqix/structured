@@ -1,30 +1,42 @@
 import Structured, { type Property, type StructuredType, type InferOutputType, type Properties } from "./structured"
 import { loadProperties, assertStructuredType, assert, readBytes, writeBytes } from "./utils"
-
+/**
+ * **union(*union*)**
+ *
+ * @param union all the diffrent properties the union has. This argument is the same format as for the struct in the `Structured` constructor.
+ *
+ * @example
+ * ```
+ * union([
+ *   ["a", uint8],
+ *   ["b", string(10)]
+ * ])
+ * ```
+ */
 export function union<const T extends readonly Property[]>(union: T): StructuredType<Partial<InferOutputType<T>>> {
 	const properties: Properties = []
 	let size = 0
 
 	for (const [name, type] of union) {
-		const _size = { value: 0 }
+		let _size = 0
 		let i = 0
 
 		if (type instanceof Array) {
 			const _properties: Properties = []
-			loadProperties(_properties, type, _size)
-			properties.push([name, _properties])
+			_size = loadProperties(_properties, type)
+			properties.push([name, _properties, _size])
 		} else if (type instanceof Structured) {
-			properties.push([name, Array.from(type.properties)])
-			_size.value = type.size
+			properties.push([name, Array.from(type.properties), type.size])
+			_size = type.size
 		} else {
 			const _type = type as StructuredType<any>
 			assertStructuredType(name, i, _type)
-			properties.push([name, _type])
-			_size.value = _type.size
+			properties.push([name, _type, _type.size])
+			_size = _type.size
 		}
 
-		if (_size.value > size) {
-			size = _size.value
+		if (_size > size) {
+			size = _size
 		}
 
 		i++
@@ -66,7 +78,8 @@ export function union<const T extends readonly Property[]>(union: T): Structured
 			bytes: Uint8Array,
 			view: DataView,
 			index: number,
-			littleEndian
+			littleEndian: boolean,
+			cleanEmptySpace: boolean
 		) {
 			let done = false
 			for (let i = 0; i < properties.length; i++) {
@@ -79,9 +92,10 @@ export function union<const T extends readonly Property[]>(union: T): Structured
 				done = true
 				if (type instanceof Array) {
 					// @ts-ignore
-					writeBytes(value[name], type, bytes, view, index, littleEndian)
+					writeBytes(value[name], type, bytes, view, index, littleEndian, cleanEmptySpace)
 				} else {
-					type.writeBytes(value[name], bytes, view, index, littleEndian)
+					type.writeBytes(value[name], bytes, view, index, littleEndian, cleanEmptySpace)
+					if (cleanEmptySpace) bytes.fill(0, index, index + size - type.size)
 				}
 			}
 		}

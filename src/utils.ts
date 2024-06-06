@@ -34,26 +34,30 @@ export function assertStructuredType(name: string, index: number, type: Structur
 	)
 }
 
-export function loadProperties(properties: Properties, struct: readonly Property[], size: { value: number }) {
+export function loadProperties(properties: Properties, struct: readonly Property[]): number {
 	let i = 0
+	let size = 0
+
 	for (const [name, type] of struct) {
-		
 		if (type instanceof Array) {
 			const _properties: Properties = []
-			loadProperties(_properties, type, size)
-			properties.push([name, _properties])
+			let _size = loadProperties(_properties, type)
+			properties.push([name, _properties, _size])
+			size += _size
 		} else if (type instanceof Structured) {
-			properties.push([name, Array.from(type.properties)])
-			size.value += type.size
+			properties.push([name, Array.from(type.properties), type.size])
+			size += type.size
 		} else {
 			const _type = type as StructuredType<any>
 			assertStructuredType(name, i, _type)
-			properties.push([name, _type])
-			size.value += _type.size
+			properties.push([name, _type, _type.size])
+			size += _type.size
 		}
-
+		
 		i++
 	}
+	
+	return size
 }
 
 export function readBytes(
@@ -98,17 +102,27 @@ export function writeBytes(
 	bytes: Uint8Array,
 	view: DataView,
 	index: number,
-	littleEndian: boolean
+	littleEndian: boolean,
+	cleanEmptySpace: boolean
 ): number {
 	for (let i = 0; i < properties.length; i++) {
 		const name = properties[i][0]
 		const type = properties[i][1]
 
 		if (type instanceof Array) {
-			index = writeBytes(object[name], type, bytes, view, index, littleEndian)
+			if (object[name] == undefined) {
+				const size = properties[i][2];
+				if (cleanEmptySpace) bytes.fill(0, index, size)
+				index += size
+				continue
+			}
+			index = writeBytes(object[name], type, bytes, view, index, littleEndian, cleanEmptySpace)
 		} else {
-			assert(name in object, "object does not have the property")
-			type.writeBytes(object[name], bytes, view, index, littleEndian)
+			if (object[name] != undefined) {
+				type.writeBytes(object[name], bytes, view, index, littleEndian, cleanEmptySpace)
+			} else {
+				if (cleanEmptySpace) bytes.fill(0, index, type.size)
+			}
 			index += type.size
 		}
 	}

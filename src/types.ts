@@ -72,6 +72,11 @@ export const bool: StructuredType<boolean> = {
 	}
 }
 
+/**
+ * **string(*size*)**
+ *  
+ * @param size The amount of bytes that this string takes.
+ */
 export function string(size: number): StructuredType<string> {
 	return {
 		size: size,

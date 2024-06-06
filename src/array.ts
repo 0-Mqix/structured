@@ -1,6 +1,13 @@
 import Structured, { type StructuredType, type Property, type InferOutputType } from "./structured"
 import { assert, emptyArrayElement } from "./utils"
 
+/**
+ * **array(*size*, *type*, *omitZeroRead*)**
+ * 
+ * @param size The amount of elements.
+ * @param type The **StructuredType** of the elements.
+ * @param omitEmptyRead Does not add the element to the result if all its bytes are zero.
+ */
 export function array<const T extends StructuredType<any> | Structured<any> | readonly Property[]>(
 	size: number,
 	type: T,
@@ -10,7 +17,7 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 
 	if (type instanceof Array) {
 		//@ts-ignore
-		_type = new Structured(true, _type)
+		_type = new Structured(true, true, _type)
 	}
 
 	const structured = _type instanceof Structured
@@ -24,7 +31,7 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 			result: InferOutputType<T>[],
 			view: DataView,
 			index: number,
-			littleEndian
+			littleEndian: boolean
 		): void {
 			assert(result instanceof Array, "result is not an array")
 
@@ -34,7 +41,7 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 
 			for (let i = 0; i < size; i++) {
 				const offset = i * _type.size + index
-
+				
 				if (i > result.length - 1) {
 					
 					if (omitEmptyRead && emptyArrayElement(bytes, offset, _type.size)) {
@@ -78,12 +85,22 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 			bytes: Uint8Array,
 			view: DataView,
 			index: number,
-			littleEndian
+			littleEndian: boolean,
+			cleanEmptySpace: boolean
 		): void {
 			assert(value.length <= size, "array is larger then expected")
-			for (let i = 0; i < value.length; i++) {
-				if (value[i] == undefined) continue
-				_type.writeBytes(value[i], bytes, view, i * _type.size + index, littleEndian)
+	
+			for (let i = 0; i < size; i++) {
+				
+				const offset = i * _type.size + index;
+				const element = value[i]
+				
+				if (element == undefined) {
+					if (cleanEmptySpace) { bytes.fill(0, offset, offset + _type.size) }
+					continue
+				}
+
+				_type.writeBytes(element, bytes, view, offset, littleEndian, cleanEmptySpace)
 			}
 		}
 	}
