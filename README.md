@@ -1,6 +1,11 @@
 # Structured
 This is a library for serialization of javascript objects from and to c like packed structs as an Uint8Array.
 
+## Install
+```npm install @mqix/structured```
+
+Or copy the index.js file from the dist folder.
+
 ## Example
 ```js
 import Structured, { uint32, float32, uint8, bool } from "."
