@@ -1,5 +1,5 @@
 {
-  "name": "structured",
+  "name": "@mqix/structured",
   "module": "index.ts",
   "type": "module",
   "main": "dist/index",
