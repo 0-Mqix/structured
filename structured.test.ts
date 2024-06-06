@@ -13,7 +13,13 @@ test("size", () => {
 				["b", uint8]
 			])
 		],
-		["e", union([["a", uint8], ["b", string(10)]])]
+		[
+			"e",
+			union([
+				["a", uint8],
+				["b", string(10)]
+			])
+		]
 	])
 
 	expect(struct.size).toBe(180)
@@ -53,7 +59,7 @@ test("array", () => {
 	// @ts-ignore
 	const bytes = struct.toBytes(input)
 	const output = struct.fromBytes(bytes)
-	
+
 	const existingOutput = {
 		numbersOmitEmpty: [0, 0, 0, 0, 5, 6, 7, 8],
 		object: { names: ["", "abc", "dfe", ""] },

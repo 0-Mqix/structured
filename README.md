@@ -87,7 +87,6 @@ This libary also has predefined types for the structs.
 | bool | boolean |
 | string(*size*) | string |
 
-
 ### Structured
 You could use instance of `Structure` as a type.
 
@@ -106,8 +105,9 @@ Or you could use the `[["name", type]]` syntax for nested types directly.
 
 ### Arrays
 ```ts 
-array(size, uint8)
+array(size, uint8, true)
 ```
+The last arguments of array is of type boolean and indicates that it should leave out values where all its bytes are zero in the result.
 
 ### Union Types
 ```ts
