@@ -10,7 +10,7 @@ Or copy the index.js file from the dist folder.
 ```js
 import Structured, { uint32, float32, uint8, bool } from "."
 
-const deviceDataStruct = new Structured(false, [
+const deviceDataStruct = new Structured(false, true, [
 	["deviceId", uint32],
 	["temperature", float32],
 	["humidity", float32],
@@ -41,7 +41,7 @@ const data: {
 ```
 And to create an buffer from an object looks like this below.
 ```ts
-const responseDataStruct = new Structured(false, [
+const responseDataStruct = new Structured(false, true, [
 	["deviceId", uint32],
 	["valid", bool],
 ]) 
@@ -66,7 +66,7 @@ class Structured {
     cleanEmptySpace: boolean;
     constructor(littleEndian: boolean, cleanEmptySpace: boolean, struct: T);
     readBytes(bytes: Uint8Array, result: StructToObject<T>, view?: DataView, index?: number, littleEndian?: boolean): void;
-    writeBytes(value: StructToObject<T>, bytes: Uint8Array, view?: DataView, index?: number, littleEndian?: boolean, overwriteEmtpy?: boolean): void;
+    writeBytes(value: StructToObject<T>, bytes: Uint8Array, view?: DataView, index?: number, littleEndian?: boolean, cleanEmptySpace?: boolean): void;
     fromBytes(bytes: Uint8Array): StructToObject<T>;
     toBytes(object: StructToObject<T>): Uint8Array;
 }
