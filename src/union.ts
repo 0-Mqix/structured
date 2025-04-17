@@ -61,11 +61,13 @@ export function union<const T extends readonly Property[]>(union: T): Structured
 					//@ts-ignore
 					if (typeof result[name] != "object") result[name] = {}
 					readBytes(result[name], type, bytes, view, index, littleEndian)
+				
 				} else {
 					if (type.readBytes) {
 						// @ts-ignore
 						if (typeof result[name] != "object") result[i] = type.array ? [] : {}
 						type.readBytes(bytes, result[name], view, index, littleEndian)
+					
 					} else {
 						// @ts-ignore
 						result[name] = type.fromBytes(bytes, view, index, littleEndian)

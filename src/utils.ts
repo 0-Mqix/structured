@@ -117,9 +117,11 @@ export function writeBytes(
 				continue
 			}
 			index = writeBytes(object[name], type, bytes, view, index, littleEndian, cleanEmptySpace)
+		
 		} else {
 			if (object[name] != undefined) {
 				type.writeBytes(object[name], bytes, view, index, littleEndian, cleanEmptySpace)
+		
 			} else {
 				if (cleanEmptySpace) bytes.fill(0, index, type.size)
 			}

@@ -1,10 +1,20 @@
 {
-  "name": "@mqix/structured",
-  "module": "index.ts",
-  "type": "module",
-  "main": "dist/index",
-  "types": "dist/index.d.ts",
-  "version": "0.0.2",
+    "name": "@mqix/structured",
+    "version": "0.0.3",
+    "type": "module",
+    "main": "./dist/index.js",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      }
+    },
+    "files": [
+      "dist"
+    ],
 
   "scripts": {
     "build": "bun build --target=browser src/index.ts --outfile=dist/index.js && bun run build:declaration",
