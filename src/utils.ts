@@ -1,5 +1,4 @@
-import type { Property, Properties, StructuredType } from "./structured"
-import Structured from "./structured"
+import type { Properties, StructuredType } from "./structured"
 
 export function assert(value: boolean, message?: string) {
 	if (!value) {
@@ -34,31 +33,6 @@ export function assertStructuredType(name: string, index: number, type: Structur
 	)
 }
 
-export function loadProperties(properties: Properties, struct: readonly Property[]): number {
-	let i = 0
-	let size = 0
-
-	for (const [name, type] of struct) {
-		if (type instanceof Array) {
-			const _properties: Properties = []
-			let _size = loadProperties(_properties, type)
-			properties.push([name, _properties, _size])
-			size += _size
-		} else if (type instanceof Structured) {
-			properties.push([name, Array.from(type.properties), type.size])
-			size += type.size
-		} else {
-			const _type = type as StructuredType<any>
-			assertStructuredType(name, i, _type)
-			properties.push([name, _type, _type.size])
-			size += _type.size
-		}
-		
-		i++
-	}
-	
-	return size
-}
 
 export function readBytes(
 	result: { [key: string]: any },

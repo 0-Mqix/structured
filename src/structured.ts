@@ -1,4 +1,5 @@
-import { assert, loadProperties, readBytes, writeBytes } from "./utils"
+import { loadProperties } from "./properties"
+import { assert, readBytes, writeBytes } from "./utils"
 
 /**
  * **StructuredType**

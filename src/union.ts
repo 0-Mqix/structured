@@ -1,5 +1,6 @@
 import Structured, { type Property, type StructuredType, type InferOutputType, type Properties } from "./structured"
-import { loadProperties, assertStructuredType, assert, readBytes, writeBytes } from "./utils"
+import { assertStructuredType, assert, readBytes, writeBytes } from "./utils"
+import { loadProperties } from "./properties"
 /**
  * **union(*union*)**
  *

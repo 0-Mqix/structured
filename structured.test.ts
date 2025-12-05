@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
-import Structured, { array, int32, string, uint8, union } from "./src"
+import { int32, string, uint8, array, union } from "./src/types"
+import Structured from "./src/structured"
 
 test("size", () => {
 	const struct = new Structured(false, true, [
@@ -133,3 +134,27 @@ test("cleanEmptySpace", () => {
 	struct.writeBytes(input, writeTestBuffer)
 	expect(struct.fromBytes(writeTestBuffer)).not.toStrictEqual(struct.fromBytes(bytes))
 })
+
+test("struct", () => {
+	const struct = new Structured(false, true, [
+		["a", [
+			["b", [
+				["c", int32],
+				["d", string(10)]
+			]],
+			["e", uint8],
+			["h", uint8],
+			["h", uint8],
+			["h", uint8],
+			["h", uint8],
+			["i", string(5)]
+		]],
+		["f", [
+			["g", array(5, int32)],
+			["j", array(5, int32)],
+			["k", array(5, int32)],
+			["h", uint8],
+		]]
+	])
+})
+
