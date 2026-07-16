@@ -1,4 +1,5 @@
 import { assert, loadProperties, readBytes, writeBytes } from "./utils"
+import type { BitGroup } from "./bits"
 
 /**
  * **StructuredType**
@@ -34,7 +35,7 @@ type StructToObject<T extends readonly Property[]> = {
 	[K in T[number] as K[0]]: InferOutputType<K[1]>
 } & {}
 
-export type Properties = [string,  StructuredType<any> | Properties, number][]
+export type Properties = [string, StructuredType<any> | Properties | BitGroup, number][]
 
 /**
  * **Structured**

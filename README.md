@@ -1,6 +1,8 @@
 # Structured
 This is a library for serialization of javascript objects from and to c like packed structs as an Uint8Array.
 
+It supports bit fields that reproduce the layout a C compiler produces for a struct marked `__attribute__((__packed__))`, byte-for-byte, in both little- and big-endian, which makes it a drop-in for decoding messages from microcontrollers.
+
 ## Install
 ```npm install @mqix/structured```
 
@@ -91,6 +93,8 @@ This libary also has predefined types for the structs.
 | long | bigint |
 | bool | boolean |
 | string(*size*) | string |
+| bits(*size*, *signed*) | number |
+| bit | boolean |
 
 ### Structured
 You could use instance of `Structure` as a type.
@@ -121,6 +125,36 @@ union([
   ["b", string(10)]
 ])
 ```
+
+### Bit Fields
+A run of adjacent `bits(...)` / `bit` fields is packed together bit-by-bit and the whole run is rounded up to `ceil(totalBits / 8)` bytes, exactly like a C `__attribute__((__packed__))` struct.
+
+```ts
+const flags = new Structured(false, true, [
+  ["active", bit],        // 1 bit
+  ["priority", bits(3)],  // 3 bits
+  ["mode", bits(4)],      // 4 bits -> the run fills 1 byte
+])
+```
+
+- Little-endian packs from bit 0 (LSB) of the first byte upward; trailing padding lands in the high bits of the last byte.
+- Big-endian packs from the MSB of the first byte downward; trailing padding lands in the low bits of the last byte.
+- Pass `true` as the second argument of `bits` for a signed field; it is sign-extended on read.
+- Values that overflow the bit width are silently truncated (masked).
+- A non-bit field between bit fields ends the current run and starts a new one.
+- Bit groups use the surrounding struct's endianness.
+- A bit field cannot be a bare array element or a direct union member; wrap it in a struct.
+
+### Endianness
+The byte order of a struct is set by the first `Structured` constructor argument, and can be overridden per call in `readBytes` / `writeBytes`. A single field can override it with `endian`.
+
+```ts
+new Structured(false, true, [
+  ["big", uint32],               // big-endian (the struct default)
+  ["little", endian(true, uint32)], // this field only is little-endian
+])
+```
+`endian(littleEndian, type)` wraps any type, struct instance, or inline `[["name", type]]` definition. Nested types inside the wrapped type inherit the override.
 
 ### Custom Types
 If you need a custom type you can create your own. you just need to follow the interface below that all types are based on.

@@ -97,7 +97,7 @@ export function string(size: number): StructuredType<string> {
 			return result
 		},
 		writeBytes: function (value: string, bytes: Uint8Array, _: DataView, index: number) {
-			assert(value.length < size, "string is larger then expected")
+			assert(value.length <= size, "string is larger then expected")
 
 			for (let i = 0; i < size; i++) {
 				if (i < value.length) {
@@ -116,3 +116,5 @@ export const long = int64;
 
 export * from "./array"
 export * from "./union"
+export * from "./bits"
+export * from "./endian"

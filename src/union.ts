@@ -1,5 +1,6 @@
 import Structured, { type Property, type StructuredType, type InferOutputType, type Properties } from "./structured"
 import { loadProperties, assertStructuredType, assert, readBytes, writeBytes } from "./utils"
+import { isBitField } from "./bits"
 /**
  * **union(*union*)**
  *
@@ -20,6 +21,8 @@ export function union<const T extends readonly Property[]>(union: T): Structured
 	for (const [name, type] of union) {
 		let _size = 0
 		let i = 0
+
+		assert(!isBitField(type), "bit fields are not supported directly in a union, wrap them in a struct")
 
 		if (type instanceof Array) {
 			const _properties: Properties = []
@@ -55,13 +58,13 @@ export function union<const T extends readonly Property[]>(union: T): Structured
 
 			for (let i = 0; i < properties.length; i++) {
 				const name = properties[i][0]
-				const type = properties[i][1]
-			
+				const type = properties[i][1] as StructuredType<any> | Properties
+
 				if (type instanceof Array) {
 					//@ts-ignore
 					if (typeof result[name] != "object") result[name] = {}
 					readBytes(result[name], type, bytes, view, index, littleEndian)
-				
+
 				} else {
 					if (type.readBytes) {
 						// @ts-ignore
@@ -86,11 +89,11 @@ export function union<const T extends readonly Property[]>(union: T): Structured
 			let done = false
 			for (let i = 0; i < properties.length; i++) {
 				const name = properties[i][0]
-				const type = properties[i][1]
-				
+				const type = properties[i][1] as StructuredType<any> | Properties
+
 				if (!(name in value)) continue
 				assert(!done, "union has multiple properties defined")
-				
+
 				done = true
 				if (type instanceof Array) {
 					// @ts-ignore

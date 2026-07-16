@@ -20,3 +20,5 @@ export declare const double: StructuredType<number>;
 export declare const long: StructuredType<bigint>;
 export * from "./array";
 export * from "./union";
+export * from "./bits";
+export * from "./endian";
