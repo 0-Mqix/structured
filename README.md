@@ -156,6 +156,19 @@ new Structured(false, true, [
 ```
 `endian(littleEndian, type)` wraps any type, struct instance, or inline `[["name", type]]` definition. Nested types inside the wrapped type inherit the override.
 
+### Cast
+Every value is a plain `number` / `boolean` / `bigint` at runtime, so the inferred type of a numeric field is always `number`. `cast<T>(type)` reinterprets that inferred type as `T` — a numeric enum, a branded number, a literal union — without changing a single byte of the serialization. It is the type-only, zero-cost analog of packed's `Cast`, and composes with any field including `bits`.
+
+```ts
+enum Action { Idle, Run, Stop }
+
+new Structured(true, true, [
+  ["action", cast<Action>(uint8)],     // inferred as Action, stored as a uint8
+  ["priority", cast<0 | 1 | 2>(bits(2))], // inferred as 0 | 1 | 2, packed into 2 bits
+])
+```
+`T` must share the runtime representation of the underlying type.
+
 ### Custom Types
 If you need a custom type you can create your own. you just need to follow the interface below that all types are based on.
 ```ts

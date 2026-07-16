@@ -400,6 +400,10 @@ function endian(littleEndian, type) {
   }
   return wrapper;
 }
+// src/cast.ts
+function cast(type) {
+  return type;
+}
 
 // src/types.ts
 var uint8 = {
@@ -509,6 +513,7 @@ export {
   double,
   Structured as default,
   createBitGroup,
+  cast,
   bool,
   bits,
   bit,
