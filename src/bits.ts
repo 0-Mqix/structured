@@ -143,9 +143,24 @@ export function isBitGroup(type: any): type is BitGroup {
 // first field occupies the most-significant bits. This reproduces packed's
 // per-word placement exactly, since the run treated as one wide integer and as
 // a sequence of 64-bit words yields the same byte layout.
-function shiftOf(size: number, field: BitGroupField, littleEndian: boolean): bigint {
-	if (littleEndian) return BigInt(field.offset)
-	return BigInt(size * 8 - field.offset - field.bitSize)
+
+// A field's placement, precomputed once so the read/write hot path stays
+// allocation-free. Numbers drive the fast path (runs that fit in 32 bits);
+// bigints drive the fallback for wider runs.
+interface FieldPlan {
+	name: string
+	kind: BitFieldKind
+	signed: boolean
+	converter?: BitsConverter<any>
+	shiftLE: number
+	shiftBE: number
+	maskNum: number
+	signBitNum: number
+	shiftLEBig: bigint
+	shiftBEBig: bigint
+	maskBig: bigint
+	signBitBig: bigint
+	spanBig: bigint
 }
 
 export function createBitGroup(entries: { name: string; field: BitFieldInfo }[]): BitGroup {
@@ -162,6 +177,29 @@ export function createBitGroup(entries: { name: string; field: BitFieldInfo }[])
 
 	assert(size >= 1, "a bit group must contain at least one bit")
 
+	// A run of at most 32 bits fits in one JS int, so it can be assembled with
+	// plain (much faster) bitwise ops instead of BigInt. Wider runs fall back to
+	// BigInt, which handles any length. Both produce byte-identical output.
+	const fast = totalBits <= 32
+
+	const plan: FieldPlan[] = fields.map((f) => ({
+		name: f.name,
+		kind: f.kind,
+		signed: f.signed,
+		converter: f.converter,
+		shiftLE: f.offset,
+		shiftBE: size * 8 - f.offset - f.bitSize,
+		// Number path. 0xFFFFFFFF >>> (32 - n) is a clean n-bit mask for 1..32.
+		maskNum: fast ? 0xffffffff >>> (32 - f.bitSize) : 0,
+		signBitNum: 2 ** (f.bitSize - 1),
+		// BigInt path.
+		shiftLEBig: BigInt(f.offset),
+		shiftBEBig: BigInt(size * 8 - f.offset - f.bitSize),
+		maskBig: (1n << BigInt(f.bitSize)) - 1n,
+		signBitBig: 1n << BigInt(f.bitSize - 1),
+		spanBig: 1n << BigInt(f.bitSize)
+	}))
+
 	return {
 		bitGroup: true,
 		size,
@@ -169,61 +207,101 @@ export function createBitGroup(entries: { name: string; field: BitFieldInfo }[])
 		fields,
 
 		readGroup(parent, bytes, _view, index, littleEndian) {
-			let accumulator = 0n
+			if (fast) {
+				let accumulator = 0
+				for (let i = 0; i < size; i++) {
+					accumulator |= bytes[index + i] << (8 * (littleEndian ? i : size - 1 - i))
+				}
+				accumulator >>>= 0 // treat as unsigned 32-bit
 
-			for (let i = 0; i < size; i++) {
-				const byte = BigInt(bytes[index + i])
-				accumulator |= byte << BigInt(8 * (littleEndian ? i : size - 1 - i))
+				for (const field of plan) {
+					const shift = littleEndian ? field.shiftLE : field.shiftBE
+					let raw = ((accumulator >>> shift) & field.maskNum) >>> 0
+
+					if (field.kind === "bool") {
+						parent[field.name] = raw !== 0
+						continue
+					}
+					if (field.kind === "converter") {
+						parent[field.name] = field.converter!.decode(raw)
+						continue
+					}
+					if (field.signed && raw >= field.signBitNum) {
+						raw -= field.signBitNum * 2
+					}
+					parent[field.name] = raw
+				}
+				return
 			}
 
-			for (const field of fields) {
-				const mask = (1n << BigInt(field.bitSize)) - 1n
-				let raw = (accumulator >> shiftOf(size, field, littleEndian)) & mask
+			let accumulator = 0n
+			for (let i = 0; i < size; i++) {
+				accumulator |= BigInt(bytes[index + i]) << BigInt(8 * (littleEndian ? i : size - 1 - i))
+			}
+
+			for (const field of plan) {
+				const shift = littleEndian ? field.shiftLEBig : field.shiftBEBig
+				let raw = (accumulator >> shift) & field.maskBig
 
 				if (field.kind === "bool") {
 					parent[field.name] = raw !== 0n
 					continue
 				}
-
 				if (field.kind === "converter") {
-					// Converters decode the raw unsigned integer; no sign extension.
 					parent[field.name] = field.converter!.decode(Number(raw))
 					continue
 				}
-
-				if (field.signed && (raw & (1n << BigInt(field.bitSize - 1))) !== 0n) {
-					raw -= 1n << BigInt(field.bitSize)
+				if (field.signed && (raw & field.signBitBig) !== 0n) {
+					raw -= field.spanBig
 				}
-
 				parent[field.name] = Number(raw)
 			}
 		},
 
 		writeGroup(parent, bytes, _view, index, littleEndian) {
-			let accumulator = 0n
+			// The whole run is always written, so padding bits are zeroed and no
+			// stale bits survive; cleanEmptySpace is inherently satisfied.
+			if (fast) {
+				let accumulator = 0
+				for (const field of plan) {
+					const value = parent[field.name]
 
-			for (const field of fields) {
+					let raw: number
+					if (field.kind === "bool") {
+						raw = value ? 1 : 0
+					} else if (field.kind === "converter") {
+						raw = ((field.converter!.encode ? field.converter!.encode(value) : 0) & field.maskNum) >>> 0
+					} else {
+						raw = ((value ?? 0) & field.maskNum) >>> 0
+					}
+
+					accumulator |= raw << (littleEndian ? field.shiftLE : field.shiftBE)
+				}
+
+				for (let i = 0; i < size; i++) {
+					bytes[index + i] = (accumulator >>> (8 * (littleEndian ? i : size - 1 - i))) & 0xff
+				}
+				return
+			}
+
+			let accumulator = 0n
+			for (const field of plan) {
 				const value = parent[field.name]
-				const mask = (1n << BigInt(field.bitSize)) - 1n
 
 				let raw: bigint
 				if (field.kind === "bool") {
 					raw = value ? 1n : 0n
 				} else if (field.kind === "converter") {
-					const encoded = field.converter!.encode ? field.converter!.encode(value) : 0
-					raw = BigInt(encoded) & mask
+					raw = BigInt(field.converter!.encode ? field.converter!.encode(value) : 0) & field.maskBig
 				} else {
-					raw = BigInt(value ?? 0) & mask
+					raw = BigInt(value ?? 0) & field.maskBig
 				}
 
-				accumulator |= raw << shiftOf(size, field, littleEndian)
+				accumulator |= raw << (littleEndian ? field.shiftLEBig : field.shiftBEBig)
 			}
 
-			// The whole run is always written, so padding bits are zeroed and no
-			// stale bits survive; cleanEmptySpace is inherently satisfied.
 			for (let i = 0; i < size; i++) {
-				const byte = (accumulator >> BigInt(8 * (littleEndian ? i : size - 1 - i))) & 0xffn
-				bytes[index + i] = Number(byte)
+				bytes[index + i] = Number((accumulator >> BigInt(8 * (littleEndian ? i : size - 1 - i))) & 0xffn)
 			}
 		}
 	}

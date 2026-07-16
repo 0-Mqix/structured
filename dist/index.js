@@ -26,11 +26,6 @@ var bit = marker({ bitSize: 1, signed: false, kind: "bool" });
 function isBitGroup(type) {
   return type != null && typeof type === "object" && type.bitGroup === true;
 }
-function shiftOf(size, field, littleEndian) {
-  if (littleEndian)
-    return BigInt(field.offset);
-  return BigInt(size * 8 - field.offset - field.bitSize);
-}
 function createBitGroup(entries) {
   const fields = [];
   let offset = 0;
@@ -41,20 +36,59 @@ function createBitGroup(entries) {
   const totalBits = offset;
   const size = Math.ceil(totalBits / 8);
   assert(size >= 1, "a bit group must contain at least one bit");
+  const fast = totalBits <= 32;
+  const plan = fields.map((f) => ({
+    name: f.name,
+    kind: f.kind,
+    signed: f.signed,
+    converter: f.converter,
+    shiftLE: f.offset,
+    shiftBE: size * 8 - f.offset - f.bitSize,
+    maskNum: fast ? 4294967295 >>> 32 - f.bitSize : 0,
+    signBitNum: 2 ** (f.bitSize - 1),
+    shiftLEBig: BigInt(f.offset),
+    shiftBEBig: BigInt(size * 8 - f.offset - f.bitSize),
+    maskBig: (1n << BigInt(f.bitSize)) - 1n,
+    signBitBig: 1n << BigInt(f.bitSize - 1),
+    spanBig: 1n << BigInt(f.bitSize)
+  }));
   return {
     bitGroup: true,
     size,
     totalBits,
     fields,
     readGroup(parent, bytes, _view, index, littleEndian) {
+      if (fast) {
+        let accumulator2 = 0;
+        for (let i = 0;i < size; i++) {
+          accumulator2 |= bytes[index + i] << 8 * (littleEndian ? i : size - 1 - i);
+        }
+        accumulator2 >>>= 0;
+        for (const field of plan) {
+          const shift = littleEndian ? field.shiftLE : field.shiftBE;
+          let raw = (accumulator2 >>> shift & field.maskNum) >>> 0;
+          if (field.kind === "bool") {
+            parent[field.name] = raw !== 0;
+            continue;
+          }
+          if (field.kind === "converter") {
+            parent[field.name] = field.converter.decode(raw);
+            continue;
+          }
+          if (field.signed && raw >= field.signBitNum) {
+            raw -= field.signBitNum * 2;
+          }
+          parent[field.name] = raw;
+        }
+        return;
+      }
       let accumulator = 0n;
       for (let i = 0;i < size; i++) {
-        const byte = BigInt(bytes[index + i]);
-        accumulator |= byte << BigInt(8 * (littleEndian ? i : size - 1 - i));
+        accumulator |= BigInt(bytes[index + i]) << BigInt(8 * (littleEndian ? i : size - 1 - i));
       }
-      for (const field of fields) {
-        const mask = (1n << BigInt(field.bitSize)) - 1n;
-        let raw = accumulator >> shiftOf(size, field, littleEndian) & mask;
+      for (const field of plan) {
+        const shift = littleEndian ? field.shiftLEBig : field.shiftBEBig;
+        let raw = accumulator >> shift & field.maskBig;
         if (field.kind === "bool") {
           parent[field.name] = raw !== 0n;
           continue;
@@ -63,31 +97,47 @@ function createBitGroup(entries) {
           parent[field.name] = field.converter.decode(Number(raw));
           continue;
         }
-        if (field.signed && (raw & 1n << BigInt(field.bitSize - 1)) !== 0n) {
-          raw -= 1n << BigInt(field.bitSize);
+        if (field.signed && (raw & field.signBitBig) !== 0n) {
+          raw -= field.spanBig;
         }
         parent[field.name] = Number(raw);
       }
     },
     writeGroup(parent, bytes, _view, index, littleEndian) {
+      if (fast) {
+        let accumulator2 = 0;
+        for (const field of plan) {
+          const value = parent[field.name];
+          let raw;
+          if (field.kind === "bool") {
+            raw = value ? 1 : 0;
+          } else if (field.kind === "converter") {
+            raw = ((field.converter.encode ? field.converter.encode(value) : 0) & field.maskNum) >>> 0;
+          } else {
+            raw = ((value ?? 0) & field.maskNum) >>> 0;
+          }
+          accumulator2 |= raw << (littleEndian ? field.shiftLE : field.shiftBE);
+        }
+        for (let i = 0;i < size; i++) {
+          bytes[index + i] = accumulator2 >>> 8 * (littleEndian ? i : size - 1 - i) & 255;
+        }
+        return;
+      }
       let accumulator = 0n;
-      for (const field of fields) {
+      for (const field of plan) {
         const value = parent[field.name];
-        const mask = (1n << BigInt(field.bitSize)) - 1n;
         let raw;
         if (field.kind === "bool") {
           raw = value ? 1n : 0n;
         } else if (field.kind === "converter") {
-          const encoded = field.converter.encode ? field.converter.encode(value) : 0;
-          raw = BigInt(encoded) & mask;
+          raw = BigInt(field.converter.encode ? field.converter.encode(value) : 0) & field.maskBig;
         } else {
-          raw = BigInt(value ?? 0) & mask;
+          raw = BigInt(value ?? 0) & field.maskBig;
         }
-        accumulator |= raw << shiftOf(size, field, littleEndian);
+        accumulator |= raw << (littleEndian ? field.shiftLEBig : field.shiftBEBig);
       }
       for (let i = 0;i < size; i++) {
-        const byte = accumulator >> BigInt(8 * (littleEndian ? i : size - 1 - i)) & 0xffn;
-        bytes[index + i] = Number(byte);
+        bytes[index + i] = Number(accumulator >> BigInt(8 * (littleEndian ? i : size - 1 - i)) & 0xffn);
       }
     }
   };

@@ -175,6 +175,76 @@ test("bit fields cannot be used directly in a union", () => {
 	expect(() => union([["a", bits(4)]])).toThrow()
 })
 
+test("32-bit-wide field round-trips through the fast path", () => {
+	for (const le of [true, false]) {
+		const u = new Structured(le, true, [["x", bits(32)]])
+		const value = 0x89abcdef // bit 31 set — exercises unsigned normalisation
+		expect(u.fromBytes(u.toBytes({ x: value })).x).toBe(value)
+
+		const expected = le ? [0xef, 0xcd, 0xab, 0x89] : [0x89, 0xab, 0xcd, 0xef]
+		expect(Array.from(u.toBytes({ x: value }))).toEqual(expected)
+
+		const s = new Structured(le, true, [["x", bits(32, true)]])
+		for (const v of [-1, -(2 ** 31), 2 ** 31 - 1, 0]) {
+			expect(s.fromBytes(s.toBytes({ x: v })).x).toBe(v)
+		}
+	}
+})
+
+test("converter works on the fast path (<=32 bits)", () => {
+	const psi = { decode: (r: number) => r * 0.5, encode: (v: number) => Math.round(v * 2) }
+	const struct = new Structured(true, true, [
+		["pressure", bits(9, psi)],
+		["flags", bits(7)]
+	])
+	expect(struct.size).toBe(2) // 16 bits -> fast path
+	const round = struct.fromBytes(struct.toBytes({ pressure: 21.5, flags: 5 }))
+	expect(round).toStrictEqual({ pressure: 21.5, flags: 5 })
+})
+
+test("fast path is byte-identical to an independent BigInt reference", () => {
+	// Independent whole-run BigInt encoder — the semantics the fast path must match.
+	function reference(widths: { n: number; signed?: boolean }[], values: number[], le: boolean) {
+		const total = widths.reduce((a, w) => a + w.n, 0)
+		const size = Math.ceil(total / 8)
+		let acc = 0n
+		let offset = 0
+		widths.forEach((w, k) => {
+			const mask = (1n << BigInt(w.n)) - 1n
+			acc |= (BigInt(values[k]) & mask) << BigInt(le ? offset : size * 8 - offset - w.n)
+			offset += w.n
+		})
+		const out = new Uint8Array(size)
+		for (let i = 0; i < size; i++) out[i] = Number((acc >> BigInt(8 * (le ? i : size - 1 - i))) & 0xffn)
+		return out
+	}
+
+	const cases: { widths: { n: number; signed?: boolean }[]; values: number[] }[] = [
+		{ widths: [{ n: 8 }, { n: 8 }, { n: 8 }, { n: 8 }], values: [0x12, 0x34, 0x56, 0x78] }, // 32 fast
+		{ widths: [{ n: 1 }, { n: 31 }], values: [1, 0x7abcdef0 & 0x7fffffff] }, //                32 fast
+		{ widths: [{ n: 32 }], values: [0xdeadbeef] }, //                                          32 fast
+		{ widths: [{ n: 5, signed: true }, { n: 11 }, { n: 16 }], values: [-7, 1500, 0xbeef] }, //  32 fast, signed
+		{ widths: [{ n: 3 }, { n: 5 }], values: [5, 19] }, //                                       8  fast
+		{ widths: [{ n: 20 }, { n: 20 }], values: [0xabcde, 0x12345] }, //                          40 big
+		{ widths: [{ n: 12 }, { n: 12 }, { n: 12 }], values: [0xabc, 0xdef, 0x123] } //            36 big
+	]
+
+	for (const le of [true, false]) {
+		for (const { widths, values } of cases) {
+			const struct = new Structured(
+				le,
+				true,
+				widths.map((w, k) => [`f${k}`, bits(w.n, w.signed ?? false)] as const)
+			)
+			const input: Record<string, number> = {}
+			widths.forEach((_, k) => (input[`f${k}`] = values[k]))
+
+			expect(Array.from(struct.toBytes(input))).toEqual(Array.from(reference(widths, values, le)))
+			expect(struct.fromBytes(struct.toBytes(input))).toStrictEqual(input)
+		}
+	}
+})
+
 test("bits converter decodes the raw integer (packed BitsConverter analog)", () => {
 	const roundCentiseconds = (v: number) => Math.round(v * 100) / 100
 
