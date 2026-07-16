@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import Structured, { array, bit, bits, endian, string, uint8, uint16, union } from "./src"
+import Structured, { array, bit, bits, endian, string, uint8, uint16, union, type BitsConverter } from "./src"
 
 test("bit group little-endian layout", () => {
 	// a: 3 bits, b: 5 bits -> 1 byte. LE packs from the LSB up.
@@ -173,4 +173,71 @@ test("bit fields cannot be bare array elements", () => {
 
 test("bit fields cannot be used directly in a union", () => {
 	expect(() => union([["a", bits(4)]])).toThrow()
+})
+
+test("bits converter decodes the raw integer (packed BitsConverter analog)", () => {
+	const roundCentiseconds = (v: number) => Math.round(v * 100) / 100
+
+	// 14-bit field: bit 0 is a seconds/centiseconds flag, upper 13 bits are the
+	// magnitude. Decode-only over the air, like a Go converter whose Integer()
+	// returns 0.
+	const averageOpenCentiseconds: BitsConverter<number> = {
+		decode(raw) {
+			const seconds = (raw & 1) !== 0
+			const time = (raw >>> 1) & 0x1fff
+			return seconds ? time : roundCentiseconds(time / 100)
+		},
+		encode: () => 0
+	}
+
+	// The exact Heartbeat35 layout: two bit runs around a plain uint16.
+	const heartbeat = new Structured(true, true, [
+		["valve_counter", bits(10)],
+		["valve_average_opening_time", bits(14, averageOpenCentiseconds)],
+		["valve_double_fire_counter", bits(10)],
+		["valve_double_fire_average_opening_time", bits(14, averageOpenCentiseconds)],
+		["lowest_internal_voltage", uint16],
+		["floater_alarm", bit],
+		["valve_alarm", bit],
+		["network_fail_counter", bits(6)]
+	])
+
+	// 10+14+10+14 = 48 bits (6 bytes) + uint16 (2) + 1+1+6 = 8 bits (1 byte) = 9
+	expect(heartbeat.size).toBe(9)
+
+	// Synthesize the wire bytes a device would send, with the same bit layout but
+	// raw integer fields, so we control the exact bits the converter receives.
+	const wire = new Structured(true, true, [
+		["a", bits(10)],
+		["b", bits(14)],
+		["c", bits(10)],
+		["d", bits(14)],
+		["v", uint16],
+		["f", bit],
+		["va", bit],
+		["n", bits(6)]
+	])
+
+	const bytes = wire.toBytes({
+		a: 300,
+		b: 500, // flag 0, time 250 -> 250/100 = 2.5
+		c: 5,
+		d: 15, // flag 1, time 7 -> 7 seconds
+		v: 3900,
+		f: true,
+		va: false,
+		n: 42
+	})
+	expect(bytes.length).toBe(9)
+
+	expect(heartbeat.fromBytes(bytes)).toStrictEqual({
+		valve_counter: 300,
+		valve_average_opening_time: 2.5,
+		valve_double_fire_counter: 5,
+		valve_double_fire_average_opening_time: 7,
+		lowest_internal_voltage: 3900,
+		floater_alarm: true,
+		valve_alarm: false,
+		network_fail_counter: 42
+	})
 })

@@ -14,10 +14,13 @@ function marker(info) {
     }
   };
 }
-function bits(size, signed = false) {
+function bits(size, arg) {
   assert(Number.isInteger(size) && size >= 1, "bit size must be a positive integer");
   assert(size <= 53, "bit size cannot exceed 53");
-  return marker({ bitSize: size, signed, kind: "int" });
+  if (arg && typeof arg === "object") {
+    return marker({ bitSize: size, signed: false, kind: "converter", converter: arg });
+  }
+  return marker({ bitSize: size, signed: arg === true, kind: "int" });
 }
 var bit = marker({ bitSize: 1, signed: false, kind: "bool" });
 function isBitGroup(type) {
@@ -56,6 +59,10 @@ function createBitGroup(entries) {
           parent[field.name] = raw !== 0n;
           continue;
         }
+        if (field.kind === "converter") {
+          parent[field.name] = field.converter.decode(Number(raw));
+          continue;
+        }
         if (field.signed && (raw & 1n << BigInt(field.bitSize - 1)) !== 0n) {
           raw -= 1n << BigInt(field.bitSize);
         }
@@ -70,6 +77,9 @@ function createBitGroup(entries) {
         let raw;
         if (field.kind === "bool") {
           raw = value ? 1n : 0n;
+        } else if (field.kind === "converter") {
+          const encoded = field.converter.encode ? field.converter.encode(value) : 0;
+          raw = BigInt(encoded) & mask;
         } else {
           raw = BigInt(value ?? 0) & mask;
         }
