@@ -1,3 +1,4 @@
+import type { BitGroup } from "./bits";
 /**
  * **StructuredType**
  *
@@ -22,7 +23,7 @@ export type InferOutputType<T> = T extends StructuredType<infer U> ? U : T exten
 type StructToObject<T extends readonly Property[]> = {
     [K in T[number] as K[0]]: InferOutputType<K[1]>;
 } & {};
-export type Properties = [string, StructuredType<any> | Properties, number][];
+export type Properties = [string, StructuredType<any> | Properties | BitGroup, number][];
 /**
  * **Structured**
  *

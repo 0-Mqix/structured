@@ -1,4 +1,5 @@
 import { assert, loadProperties, readBytes, writeBytes } from "./utils"
+import type { BitGroup } from "./bits"
 
 /**
  * **StructuredType**
@@ -34,7 +35,7 @@ type StructToObject<T extends readonly Property[]> = {
 	[K in T[number] as K[0]]: InferOutputType<K[1]>
 } & {}
 
-export type Properties = [string,  StructuredType<any> | Properties, number][]
+export type Properties = [string, StructuredType<any> | Properties | BitGroup, number][]
 
 /**
  * **Structured**
@@ -58,12 +59,15 @@ export default class Structured<const T extends readonly Property[]> {
 
 	readBytes(bytes: Uint8Array, result: StructToObject<T>, view?: DataView, index = 0, littleEndian?: boolean) {
 		assert(typeof result == "object", "result is undefined")
-		if (!view) view = new DataView(bytes.buffer)
+		// Pass byteOffset/byteLength so a Uint8Array that is a view into a larger
+		// buffer (e.g. a Web Bluetooth notification value or a subarray) is read
+		// from the view, not from the start of the backing buffer.
+		if (!view) view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 		readBytes(result, this.properties, bytes, view, index, littleEndian ?? this.littleEndian)
 	}
-	
+
 	writeBytes(value: StructToObject<T>, bytes: Uint8Array, view?: DataView, index = 0, littleEndian?: boolean, overwriteEmtpy?: boolean) {
-		if (!view) view = new DataView(bytes.buffer)
+		if (!view) view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 		writeBytes(value, this.properties, bytes, view, index, littleEndian ?? this.littleEndian, overwriteEmtpy ?? this.cleanEmptySpace)
 	}
 	

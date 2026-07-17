@@ -1,3 +1,148 @@
+// src/bits.ts
+function isBitField(type) {
+  return type != null && typeof type === "object" && "__bits" in type;
+}
+function marker(info) {
+  return {
+    __bits: info,
+    size: 0,
+    fromBytes() {
+      throw new Error("a bit field can only be used inside a struct");
+    },
+    writeBytes() {
+      throw new Error("a bit field can only be used inside a struct");
+    }
+  };
+}
+function bits(size, arg) {
+  assert(Number.isInteger(size) && size >= 1, "bit size must be a positive integer");
+  assert(size <= 53, "bit size cannot exceed 53");
+  if (arg && typeof arg === "object") {
+    return marker({ bitSize: size, signed: false, kind: "converter", converter: arg });
+  }
+  return marker({ bitSize: size, signed: arg === true, kind: "int" });
+}
+var bit = marker({ bitSize: 1, signed: false, kind: "bool" });
+function isBitGroup(type) {
+  return type != null && typeof type === "object" && type.bitGroup === true;
+}
+function createBitGroup(entries) {
+  const fields = [];
+  let offset = 0;
+  for (const { name, field } of entries) {
+    fields.push({ ...field, name, offset });
+    offset += field.bitSize;
+  }
+  const totalBits = offset;
+  const size = Math.ceil(totalBits / 8);
+  assert(size >= 1, "a bit group must contain at least one bit");
+  const fast = totalBits <= 32;
+  const plan = fields.map((f) => ({
+    name: f.name,
+    kind: f.kind,
+    signed: f.signed,
+    converter: f.converter,
+    shiftLE: f.offset,
+    shiftBE: size * 8 - f.offset - f.bitSize,
+    maskNum: fast ? 4294967295 >>> 32 - f.bitSize : 0,
+    signBitNum: 2 ** (f.bitSize - 1),
+    shiftLEBig: BigInt(f.offset),
+    shiftBEBig: BigInt(size * 8 - f.offset - f.bitSize),
+    maskBig: (1n << BigInt(f.bitSize)) - 1n,
+    signBitBig: 1n << BigInt(f.bitSize - 1),
+    spanBig: 1n << BigInt(f.bitSize)
+  }));
+  return {
+    bitGroup: true,
+    size,
+    totalBits,
+    fields,
+    readGroup(parent, bytes, _view, index, littleEndian) {
+      if (fast) {
+        let accumulator2 = 0;
+        for (let i = 0;i < size; i++) {
+          accumulator2 |= bytes[index + i] << 8 * (littleEndian ? i : size - 1 - i);
+        }
+        accumulator2 >>>= 0;
+        for (const field of plan) {
+          const shift = littleEndian ? field.shiftLE : field.shiftBE;
+          let raw = (accumulator2 >>> shift & field.maskNum) >>> 0;
+          if (field.kind === "bool") {
+            parent[field.name] = raw !== 0;
+            continue;
+          }
+          if (field.kind === "converter") {
+            parent[field.name] = field.converter.decode(raw);
+            continue;
+          }
+          if (field.signed && raw >= field.signBitNum) {
+            raw -= field.signBitNum * 2;
+          }
+          parent[field.name] = raw;
+        }
+        return;
+      }
+      let accumulator = 0n;
+      for (let i = 0;i < size; i++) {
+        accumulator |= BigInt(bytes[index + i]) << BigInt(8 * (littleEndian ? i : size - 1 - i));
+      }
+      for (const field of plan) {
+        const shift = littleEndian ? field.shiftLEBig : field.shiftBEBig;
+        let raw = accumulator >> shift & field.maskBig;
+        if (field.kind === "bool") {
+          parent[field.name] = raw !== 0n;
+          continue;
+        }
+        if (field.kind === "converter") {
+          parent[field.name] = field.converter.decode(Number(raw));
+          continue;
+        }
+        if (field.signed && (raw & field.signBitBig) !== 0n) {
+          raw -= field.spanBig;
+        }
+        parent[field.name] = Number(raw);
+      }
+    },
+    writeGroup(parent, bytes, _view, index, littleEndian) {
+      if (fast) {
+        let accumulator2 = 0;
+        for (const field of plan) {
+          const value = parent[field.name];
+          let raw;
+          if (field.kind === "bool") {
+            raw = value ? 1 : 0;
+          } else if (field.kind === "converter") {
+            raw = ((field.converter.encode ? field.converter.encode(value) : 0) & field.maskNum) >>> 0;
+          } else {
+            raw = ((value ?? 0) & field.maskNum) >>> 0;
+          }
+          accumulator2 |= raw << (littleEndian ? field.shiftLE : field.shiftBE);
+        }
+        for (let i = 0;i < size; i++) {
+          bytes[index + i] = accumulator2 >>> 8 * (littleEndian ? i : size - 1 - i) & 255;
+        }
+        return;
+      }
+      let accumulator = 0n;
+      for (const field of plan) {
+        const value = parent[field.name];
+        let raw;
+        if (field.kind === "bool") {
+          raw = value ? 1n : 0n;
+        } else if (field.kind === "converter") {
+          raw = BigInt(field.converter.encode ? field.converter.encode(value) : 0) & field.maskBig;
+        } else {
+          raw = BigInt(value ?? 0) & field.maskBig;
+        }
+        accumulator |= raw << (littleEndian ? field.shiftLEBig : field.shiftBEBig);
+      }
+      for (let i = 0;i < size; i++) {
+        bytes[index + i] = Number(accumulator >> BigInt(8 * (littleEndian ? i : size - 1 - i)) & 0xffn);
+      }
+    }
+  };
+}
+
 // src/utils.ts
 function assert(value, message) {
   if (!value) {
@@ -24,7 +169,25 @@ function assertStructuredType(name, index, type) {
 function loadProperties(properties, struct) {
   let i = 0;
   let size = 0;
+  const names = new Set;
+  let currentBits = [];
+  const flushBits = () => {
+    if (currentBits.length == 0)
+      return;
+    const group = createBitGroup(currentBits);
+    properties.push(["", group, group.size]);
+    size += group.size;
+    currentBits = [];
+  };
   for (const [name, type] of struct) {
+    assert(!names.has(name), `property "${name}" already exists`);
+    names.add(name);
+    if (isBitField(type)) {
+      currentBits.push({ name, field: type.__bits });
+      i++;
+      continue;
+    }
+    flushBits();
     if (type instanceof Array) {
       const _properties = [];
       let _size = loadProperties(_properties, type);
@@ -41,13 +204,17 @@ function loadProperties(properties, struct) {
     }
     i++;
   }
+  flushBits();
   return size;
 }
 function readBytes(result, properties, bytes, view, index, littleEndian) {
   for (let i = 0;i < properties.length; i++) {
     const name = properties[i][0];
     const type = properties[i][1];
-    if (type instanceof Array) {
+    if (isBitGroup(type)) {
+      type.readGroup(result, bytes, view, index, littleEndian);
+      index += type.size;
+    } else if (type instanceof Array) {
       if (typeof result[name] != "object") {
         result[name] = {};
       }
@@ -70,11 +237,16 @@ function writeBytes(object, properties, bytes, view, index, littleEndian, cleanE
   for (let i = 0;i < properties.length; i++) {
     const name = properties[i][0];
     const type = properties[i][1];
+    if (isBitGroup(type)) {
+      type.writeGroup(object, bytes, view, index, littleEndian, cleanEmptySpace);
+      index += type.size;
+      continue;
+    }
     if (type instanceof Array) {
       if (object[name] == undefined) {
         const size = properties[i][2];
         if (cleanEmptySpace)
-          bytes.fill(0, index, size);
+          bytes.fill(0, index, index + size);
         index += size;
         continue;
       }
@@ -84,7 +256,7 @@ function writeBytes(object, properties, bytes, view, index, littleEndian, cleanE
         type.writeBytes(object[name], bytes, view, index, littleEndian, cleanEmptySpace);
       } else {
         if (cleanEmptySpace)
-          bytes.fill(0, index, type.size);
+          bytes.fill(0, index, index + type.size);
       }
       index += type.size;
     }
@@ -106,12 +278,12 @@ class Structured {
   readBytes(bytes, result, view, index = 0, littleEndian) {
     assert(typeof result == "object", "result is undefined");
     if (!view)
-      view = new DataView(bytes.buffer);
+      view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     readBytes(result, this.properties, bytes, view, index, littleEndian ?? this.littleEndian);
   }
   writeBytes(value, bytes, view, index = 0, littleEndian, overwriteEmtpy) {
     if (!view)
-      view = new DataView(bytes.buffer);
+      view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     writeBytes(value, this.properties, bytes, view, index, littleEndian ?? this.littleEndian, overwriteEmtpy ?? this.cleanEmptySpace);
   }
   fromBytes(bytes) {
@@ -125,41 +297,14 @@ class Structured {
     return bytes;
   }
 }
-// src/types.ts
-function string(size) {
-  return {
-    size,
-    fromBytes: function(bytes, _, index) {
-      let result = "";
-      for (let i = 0;i < size; i++) {
-        const byte = bytes[i + index];
-        if (byte == 0 || byte == undefined) {
-          break;
-        }
-        result += String.fromCharCode(byte);
-      }
-      return result;
-    },
-    writeBytes: function(value, bytes, _, index) {
-      assert(value.length < size, "string is larger then expected");
-      for (let i = 0;i < size; i++) {
-        if (i < value.length) {
-          bytes[index + i] = value.charCodeAt(i);
-          continue;
-        }
-        bytes[index + i] = 0;
-      }
-    }
-  };
-}
-
 // src/array.ts
 function array(size, type, omitEmptyRead = false) {
+  assert(!isBitField(type), "bit fields as direct array elements are not supported, wrap them in a struct");
   let _type = type;
   if (type instanceof Array) {
     _type = new Structured(true, true, _type);
   }
-  const structured3 = _type instanceof Structured;
+  const structured = _type instanceof Structured;
   return {
     array: true,
     size: _type.size * size,
@@ -174,7 +319,7 @@ function array(size, type, omitEmptyRead = false) {
           if (omitEmptyRead && emptyArrayElement(bytes, offset, _type.size)) {
             continue;
           }
-          if (structured3 || _type.readBytes) {
+          if (structured || _type.readBytes) {
             const object = _type.array ? [] : {};
             _type.readBytes(bytes, object, view, offset, littleEndian);
             result.push(object);
@@ -188,7 +333,7 @@ function array(size, type, omitEmptyRead = false) {
           i--;
           continue;
         }
-        if (structured3 || _type.readBytes) {
+        if (structured || _type.readBytes) {
           if (typeof result[i] != "object")
             result[i] = type.array ? [] : {};
           _type.readBytes(bytes, result[i], view, offset, littleEndian);
@@ -220,6 +365,7 @@ function union(union2) {
   for (const [name, type] of union2) {
     let _size = 0;
     let i = 0;
+    assert(!isBitField(type), "bit fields are not supported directly in a union, wrap them in a struct");
     if (type instanceof Array) {
       const _properties = [];
       _size = loadProperties(_properties, type);
@@ -279,6 +425,44 @@ function union(union2) {
       }
     }
   };
+}
+// src/endian.ts
+function endian(littleEndian, type) {
+  let inner = type;
+  if (inner instanceof Array) {
+    inner = new Structured(littleEndian, true, inner);
+  }
+  if (inner instanceof Structured) {
+    const structured = inner;
+    return {
+      size: structured.size,
+      readBytes(bytes, result, view, index) {
+        structured.readBytes(bytes, result, view, index, littleEndian);
+      },
+      writeBytes(value, bytes, view, index, _littleEndian, cleanEmptySpace) {
+        structured.writeBytes(value, bytes, view, index, littleEndian, cleanEmptySpace);
+      }
+    };
+  }
+  const _type = inner;
+  const wrapper = {
+    size: _type.size,
+    writeBytes(value, bytes, view, index, _littleEndian, cleanEmptySpace) {
+      _type.writeBytes(value, bytes, view, index, littleEndian, cleanEmptySpace);
+    }
+  };
+  if (_type.array)
+    wrapper.array = true;
+  if (_type.readBytes) {
+    wrapper.readBytes = (bytes, result, view, index) => _type.readBytes(bytes, result, view, index, littleEndian);
+  } else {
+    wrapper.fromBytes = (bytes, view, index) => _type.fromBytes(bytes, view, index, littleEndian);
+  }
+  return wrapper;
+}
+// src/cast.ts
+function cast(type) {
+  return type;
 }
 
 // src/types.ts
@@ -341,6 +525,32 @@ var bool = {
     bytes[index] = value ? 1 : 0;
   }
 };
+function string(size) {
+  return {
+    size,
+    fromBytes: function(bytes, _, index) {
+      let result = "";
+      for (let i = 0;i < size; i++) {
+        const byte = bytes[i + index];
+        if (byte == 0 || byte == undefined) {
+          break;
+        }
+        result += String.fromCharCode(byte);
+      }
+      return result;
+    },
+    writeBytes: function(value, bytes, _, index) {
+      assert(value.length <= size, "string is larger then expected");
+      for (let i = 0;i < size; i++) {
+        if (i < value.length) {
+          bytes[index + i] = value.charCodeAt(i);
+          continue;
+        }
+        bytes[index + i] = 0;
+      }
+    }
+  };
+}
 var double = float64;
 var long = int64;
 export {
@@ -351,14 +561,21 @@ export {
   uint16,
   string,
   long,
+  isBitGroup,
+  isBitField,
   int8,
   int64,
   int32,
   int16,
   float64,
   float32,
+  endian,
   double,
   Structured as default,
+  createBitGroup,
+  cast,
   bool,
+  bits,
+  bit,
   array
 };

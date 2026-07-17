@@ -1,5 +1,6 @@
 import Structured, { type StructuredType, type Property, type InferOutputType } from "./structured"
 import { assert, emptyArrayElement } from "./utils"
+import { isBitField } from "./bits"
 
 /**
  * **array(*size*, *type*, *omitZeroRead*)**
@@ -13,6 +14,8 @@ export function array<const T extends StructuredType<any> | Structured<any> | re
 	type: T,
 	omitEmptyRead = false
 ): StructuredType<InferOutputType<T>[]> {
+	assert(!isBitField(type), "bit fields as direct array elements are not supported, wrap them in a struct")
+
 	let _type = type as StructuredType<any> | Structured<any>
 
 	if (type instanceof Array) {

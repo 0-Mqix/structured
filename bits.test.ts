@@ -1,0 +1,313 @@
+import { expect, test } from "bun:test"
+import Structured, { array, bit, bits, endian, string, uint8, uint16, union, type BitsConverter } from "./src"
+
+test("bit group little-endian layout", () => {
+	// a: 3 bits, b: 5 bits -> 1 byte. LE packs from the LSB up.
+	const struct = new Structured(true, true, [
+		["a", bits(3)],
+		["b", bits(5)]
+	])
+
+	expect(struct.size).toBe(1)
+
+	const input = { a: 5, b: 19 }
+	const bytes = struct.toBytes(input)
+	// a=0b101 at bit 0, b=0b10011 at bit 3 -> 0b10011_101 = 0x9D
+	expect(Array.from(bytes)).toEqual([0x9d])
+	expect(struct.fromBytes(bytes)).toStrictEqual(input)
+})
+
+test("bit group big-endian layout", () => {
+	// Same fields, big-endian packs from the MSB down (first field is highest).
+	const struct = new Structured(false, true, [
+		["a", bits(3)],
+		["b", bits(5)]
+	])
+
+	const input = { a: 5, b: 19 }
+	const bytes = struct.toBytes(input)
+	// a=0b101 at bits 7..5, b=0b10011 at bits 4..0 -> 0b101_10011 = 0xB3
+	expect(Array.from(bytes)).toEqual([0xb3])
+	expect(struct.fromBytes(bytes)).toStrictEqual(input)
+})
+
+test("bit group spanning two bytes, little-endian", () => {
+	const struct = new Structured(true, true, [
+		["a", bits(10)],
+		["b", bits(6)]
+	])
+
+	expect(struct.size).toBe(2)
+
+	const input = { a: 1023, b: 42 }
+	const bytes = struct.toBytes(input)
+	// acc = 1023 | (42 << 10) = 0xABFF -> [0xFF, 0xAB]
+	expect(Array.from(bytes)).toEqual([0xff, 0xab])
+	expect(struct.fromBytes(bytes)).toStrictEqual(input)
+})
+
+test("bit group spanning two bytes, big-endian", () => {
+	const struct = new Structured(false, true, [
+		["a", bits(10)],
+		["b", bits(6)]
+	])
+
+	const input = { a: 1023, b: 42 }
+	const bytes = struct.toBytes(input)
+	// acc = (1023 << 6) | 42 = 0xFFEA -> [0xFF, 0xEA]
+	expect(Array.from(bytes)).toEqual([0xff, 0xea])
+	expect(struct.fromBytes(bytes)).toStrictEqual(input)
+})
+
+test("straddling field with trailing padding, little-endian", () => {
+	// 6 + 6 = 12 bits -> 2 bytes with 4 padding bits in the high nibble of byte 1.
+	const struct = new Structured(true, true, [
+		["a", bits(6)],
+		["b", bits(6)]
+	])
+
+	const input = { a: 42, b: 21 }
+	const bytes = struct.toBytes(input)
+	// acc = 42 | (21 << 6) = 0x56A -> [0x6A, 0x05]
+	expect(Array.from(bytes)).toEqual([0x6a, 0x05])
+	expect(struct.fromBytes(bytes)).toStrictEqual(input)
+})
+
+test("signed bit fields sign-extend on read", () => {
+	const struct = new Structured(true, true, [["x", bits(4, true)]])
+
+	for (const value of [-8, -1, 0, 7]) {
+		expect(struct.fromBytes(struct.toBytes({ x: value })).x).toBe(value)
+	}
+
+	// -1 masked to 4 bits is 0xF.
+	expect(Array.from(struct.toBytes({ x: -1 }))).toEqual([0x0f])
+})
+
+test("overflowing values are truncated to the bit width", () => {
+	const struct = new Structured(true, true, [["x", bits(4)]])
+	// 0b1_0011 truncated to 4 bits -> 0b0011 = 3
+	expect(struct.fromBytes(struct.toBytes({ x: 0b10011 })).x).toBe(3)
+})
+
+test("bit single-bit boolean", () => {
+	const struct = new Structured(false, true, [
+		["active", bit],
+		["priority", bits(3)],
+		["mode", bits(4)]
+	])
+
+	const input = { active: true, priority: 5, mode: 10 }
+	const bytes = struct.toBytes(input)
+	// big-endian: 1<<7 | 5<<4 | 10 = 0xDA
+	expect(Array.from(bytes)).toEqual([0xda])
+	expect(struct.fromBytes(bytes)).toStrictEqual(input)
+})
+
+test("bit runs reset around a normal field", () => {
+	const struct = new Structured(true, true, [
+		["x", uint8],
+		["a", bit],
+		["b", bits(3)],
+		["y", uint16]
+	])
+	// 1 (uint8) + ceil(4/8)=1 (bit run) + 2 (uint16) = 4
+	expect(struct.size).toBe(4)
+
+	const input = { x: 200, a: true, b: 6, y: 40000 }
+	expect(struct.fromBytes(struct.toBytes(input))).toStrictEqual(input)
+})
+
+test("bit group reads into a reused result object", () => {
+	const struct = new Structured(true, true, [
+		["a", bits(4)],
+		["b", bits(4)]
+	])
+
+	const bytes = struct.toBytes({ a: 3, b: 9 })
+	const result = { a: 0, b: 0 }
+	struct.readBytes(bytes, result)
+	expect(result).toStrictEqual({ a: 3, b: 9 })
+})
+
+test("per-field endianness override", () => {
+	const struct = new Structured(false, true, [
+		["big", uint16],
+		["little", endian(true, uint16)]
+	])
+
+	const bytes = struct.toBytes({ big: 0x0102, little: 0x0102 })
+	// big-endian [01,02], little-endian [02,01]
+	expect(Array.from(bytes)).toEqual([0x01, 0x02, 0x02, 0x01])
+	expect(struct.fromBytes(bytes)).toStrictEqual({ big: 0x0102, little: 0x0102 })
+})
+
+test("endian override on a nested struct", () => {
+	const struct = new Structured(false, true, [["inner", endian(true, [["value", uint16]])]])
+
+	const bytes = struct.toBytes({ inner: { value: 0x0102 } })
+	expect(Array.from(bytes)).toEqual([0x02, 0x01])
+	expect(struct.fromBytes(bytes)).toStrictEqual({ inner: { value: 0x0102 } })
+})
+
+test("string of exactly the field length is allowed", () => {
+	const struct = new Structured(true, true, [["name", string(3)]])
+	// "max" is exactly 3 bytes; this previously threw an off-by-one error.
+	expect(() => struct.toBytes({ name: "max" })).not.toThrow()
+	expect(struct.fromBytes(struct.toBytes({ name: "max" }))).toStrictEqual({ name: "max" })
+})
+
+test("duplicate field names are rejected", () => {
+	expect(
+		() =>
+			new Structured(true, true, [
+				["a", uint8],
+				["a", uint8]
+			])
+	).toThrow()
+})
+
+test("bit fields cannot be bare array elements", () => {
+	expect(() => array(4, bits(2))).toThrow()
+})
+
+test("bit fields cannot be used directly in a union", () => {
+	expect(() => union([["a", bits(4)]])).toThrow()
+})
+
+test("32-bit-wide field round-trips through the fast path", () => {
+	for (const le of [true, false]) {
+		const u = new Structured(le, true, [["x", bits(32)]])
+		const value = 0x89abcdef // bit 31 set — exercises unsigned normalisation
+		expect(u.fromBytes(u.toBytes({ x: value })).x).toBe(value)
+
+		const expected = le ? [0xef, 0xcd, 0xab, 0x89] : [0x89, 0xab, 0xcd, 0xef]
+		expect(Array.from(u.toBytes({ x: value }))).toEqual(expected)
+
+		const s = new Structured(le, true, [["x", bits(32, true)]])
+		for (const v of [-1, -(2 ** 31), 2 ** 31 - 1, 0]) {
+			expect(s.fromBytes(s.toBytes({ x: v })).x).toBe(v)
+		}
+	}
+})
+
+test("converter works on the fast path (<=32 bits)", () => {
+	const psi = { decode: (r: number) => r * 0.5, encode: (v: number) => Math.round(v * 2) }
+	const struct = new Structured(true, true, [
+		["pressure", bits(9, psi)],
+		["flags", bits(7)]
+	])
+	expect(struct.size).toBe(2) // 16 bits -> fast path
+	const round = struct.fromBytes(struct.toBytes({ pressure: 21.5, flags: 5 }))
+	expect(round).toStrictEqual({ pressure: 21.5, flags: 5 })
+})
+
+test("fast path is byte-identical to an independent BigInt reference", () => {
+	// Independent whole-run BigInt encoder — the semantics the fast path must match.
+	function reference(widths: { n: number; signed?: boolean }[], values: number[], le: boolean) {
+		const total = widths.reduce((a, w) => a + w.n, 0)
+		const size = Math.ceil(total / 8)
+		let acc = 0n
+		let offset = 0
+		widths.forEach((w, k) => {
+			const mask = (1n << BigInt(w.n)) - 1n
+			acc |= (BigInt(values[k]) & mask) << BigInt(le ? offset : size * 8 - offset - w.n)
+			offset += w.n
+		})
+		const out = new Uint8Array(size)
+		for (let i = 0; i < size; i++) out[i] = Number((acc >> BigInt(8 * (le ? i : size - 1 - i))) & 0xffn)
+		return out
+	}
+
+	const cases: { widths: { n: number; signed?: boolean }[]; values: number[] }[] = [
+		{ widths: [{ n: 8 }, { n: 8 }, { n: 8 }, { n: 8 }], values: [0x12, 0x34, 0x56, 0x78] }, // 32 fast
+		{ widths: [{ n: 1 }, { n: 31 }], values: [1, 0x7abcdef0 & 0x7fffffff] }, //                32 fast
+		{ widths: [{ n: 32 }], values: [0xdeadbeef] }, //                                          32 fast
+		{ widths: [{ n: 5, signed: true }, { n: 11 }, { n: 16 }], values: [-7, 1500, 0xbeef] }, //  32 fast, signed
+		{ widths: [{ n: 3 }, { n: 5 }], values: [5, 19] }, //                                       8  fast
+		{ widths: [{ n: 20 }, { n: 20 }], values: [0xabcde, 0x12345] }, //                          40 big
+		{ widths: [{ n: 12 }, { n: 12 }, { n: 12 }], values: [0xabc, 0xdef, 0x123] } //            36 big
+	]
+
+	for (const le of [true, false]) {
+		for (const { widths, values } of cases) {
+			const struct = new Structured(
+				le,
+				true,
+				widths.map((w, k) => [`f${k}`, bits(w.n, w.signed ?? false)] as const)
+			)
+			const input: Record<string, number> = {}
+			widths.forEach((_, k) => (input[`f${k}`] = values[k]))
+
+			expect(Array.from(struct.toBytes(input))).toEqual(Array.from(reference(widths, values, le)))
+			expect(struct.fromBytes(struct.toBytes(input))).toStrictEqual(input)
+		}
+	}
+})
+
+test("bits converter decodes the raw integer (packed BitsConverter analog)", () => {
+	const roundCentiseconds = (v: number) => Math.round(v * 100) / 100
+
+	// 14-bit field: bit 0 is a seconds/centiseconds flag, upper 13 bits are the
+	// magnitude. Decode-only over the air, like a Go converter whose Integer()
+	// returns 0.
+	const averageOpenCentiseconds: BitsConverter<number> = {
+		decode(raw) {
+			const seconds = (raw & 1) !== 0
+			const time = (raw >>> 1) & 0x1fff
+			return seconds ? time : roundCentiseconds(time / 100)
+		},
+		encode: () => 0
+	}
+
+	// The exact Heartbeat35 layout: two bit runs around a plain uint16.
+	const heartbeat = new Structured(true, true, [
+		["valve_counter", bits(10)],
+		["valve_average_opening_time", bits(14, averageOpenCentiseconds)],
+		["valve_double_fire_counter", bits(10)],
+		["valve_double_fire_average_opening_time", bits(14, averageOpenCentiseconds)],
+		["lowest_internal_voltage", uint16],
+		["floater_alarm", bit],
+		["valve_alarm", bit],
+		["network_fail_counter", bits(6)]
+	])
+
+	// 10+14+10+14 = 48 bits (6 bytes) + uint16 (2) + 1+1+6 = 8 bits (1 byte) = 9
+	expect(heartbeat.size).toBe(9)
+
+	// Synthesize the wire bytes a device would send, with the same bit layout but
+	// raw integer fields, so we control the exact bits the converter receives.
+	const wire = new Structured(true, true, [
+		["a", bits(10)],
+		["b", bits(14)],
+		["c", bits(10)],
+		["d", bits(14)],
+		["v", uint16],
+		["f", bit],
+		["va", bit],
+		["n", bits(6)]
+	])
+
+	const bytes = wire.toBytes({
+		a: 300,
+		b: 500, // flag 0, time 250 -> 250/100 = 2.5
+		c: 5,
+		d: 15, // flag 1, time 7 -> 7 seconds
+		v: 3900,
+		f: true,
+		va: false,
+		n: 42
+	})
+	expect(bytes.length).toBe(9)
+
+	expect(heartbeat.fromBytes(bytes)).toStrictEqual({
+		valve_counter: 300,
+		valve_average_opening_time: 2.5,
+		valve_double_fire_counter: 5,
+		valve_double_fire_average_opening_time: 7,
+		lowest_internal_voltage: 3900,
+		floater_alarm: true,
+		valve_alarm: false,
+		network_fail_counter: 42
+	})
+})
