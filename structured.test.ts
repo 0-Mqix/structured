@@ -1,5 +1,32 @@
 import { expect, test } from "bun:test"
-import Structured, { array, int32, string, uint8, union } from "./src"
+import Structured, { array, bool, float32, int32, string, uint8, uint16, uint32, union } from "./src"
+
+test("reads and writes a Uint8Array that is a view into a larger buffer", () => {
+	const struct = new Structured(true, true, [
+		["a", uint32],
+		["b", float32],
+		["c", uint16],
+		["flag", bool],
+		["name", string(4)]
+	])
+
+	// A Uint8Array positioned at a non-zero offset in a bigger buffer, like a
+	// Web Bluetooth characteristic value or any subarray.
+	const backing = new Uint8Array(64)
+	const offset = 10
+	const window = backing.subarray(offset, offset + struct.size)
+
+	const input = { a: 0xdeadbeef, b: 1.5, c: 0x1234, flag: true, name: "max" }
+	struct.writeBytes(input, window)
+
+	// The bytes must land at the window, not at the start of the backing buffer.
+	expect(backing.subarray(0, offset).every((x) => x === 0)).toBeTrue()
+
+	// A fresh window over the same region must decode the same values — this is
+	// what silently failed for numeric fields before byteOffset was passed.
+	const readWindow = backing.subarray(offset, offset + struct.size)
+	expect(struct.fromBytes(readWindow)).toStrictEqual(input)
+})
 
 test("size", () => {
 	const struct = new Structured(false, true, [

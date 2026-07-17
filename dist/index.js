@@ -278,12 +278,12 @@ class Structured {
   readBytes(bytes, result, view, index = 0, littleEndian) {
     assert(typeof result == "object", "result is undefined");
     if (!view)
-      view = new DataView(bytes.buffer);
+      view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     readBytes(result, this.properties, bytes, view, index, littleEndian ?? this.littleEndian);
   }
   writeBytes(value, bytes, view, index = 0, littleEndian, overwriteEmtpy) {
     if (!view)
-      view = new DataView(bytes.buffer);
+      view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     writeBytes(value, this.properties, bytes, view, index, littleEndian ?? this.littleEndian, overwriteEmtpy ?? this.cleanEmptySpace);
   }
   fromBytes(bytes) {
